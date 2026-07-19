@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0B141F" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#EFF3F6" media="(prefers-color-scheme: light)">
-<meta name="description" content="以台北時間同步、依公開班距與行車時間推估的台灣捷運動態路網圖；非逐車 GPS 定位。">
+<meta name="description" content="融合官方進站錨點、逐站行車時間與公開班距的台灣捷運動態路網圖；非逐車 GPS 定位。">
 <title>台灣捷運動態圖</title>
 <style>
   :root {
@@ -651,7 +651,7 @@
 <div class="modal-scrim" id="scrim">
   <div class="modal">
     <h2>資料方式與限制</h2>
-    <p><b>所有車點仍是班表位置推估，不是逐車 GPS。</b> 北捷文湖、淡水信義、松山新店、中和新蘆與板南線會每 30 秒嘗試讀取官方「列車進入月台」事件；只在路線、方向與推估班次都能唯一判定時，才平滑校正既有車點。官方資料沒有列車編號、完整列車清單或站間座標，因此不能當成逐車連續定位。資料延遲或中斷時會自動保留原本的班表推估，其他路網也維持純推估。列車依各線首末班時間、平日尖離峰／週末班距與站間實際距離、平均旅速推算位置，並以台北時間同步；仍可能不反映臨時延誤、停駛、加班車或交路調度。路線圖採「標準路網圖」式示意排版，非地理實際位置。</p>
+    <p><b>所有車點仍是融合位置推估，不是逐車 GPS。</b> 北捷文湖、淡水信義、松山新店、中和新蘆與板南線會每 30 秒讀取官方「列車進入月台」快照；只在路線、方向、終點與既有推估班次都能唯一判定時，才用官方進站錨點校正車點。校正只會讓列車減速或加速收斂，不會倒退或瞬移。文湖、紅、綠、橘、藍與環狀線的站間行駛／停靠秒數採北捷官方資料；資料延遲、歧義或中斷時則保留公開班距模型。官方免費資料沒有列車編號、完整列車清單或站間座標，因此不能當成逐車連續定位，仍可能不反映臨時延誤、停駛、加班車或交路調度。路線圖採「標準路網圖」式示意排版，非地理實際位置。</p>
     <p><b>涵蓋路網（2026-07 營運中路段）</b></p>
     <ul>
       <li>台北捷運：文湖、淡水信義（含新北投支線）、松山新店（含小碧潭支線）、中和新蘆（蘆洲／迴龍雙分支）、板南、環狀線</li>
@@ -821,6 +821,21 @@ const NET = [
      ["C30","科工館",22.6310,120.3300,10.4,13.2],["C31","聖功醫院",22.6250,120.3300,10.4,15.6],["C32","凱旋公園",22.6155,120.3282,10.4,17.7]]}]}
 ];
 
+/* 北捷官方「相鄰兩站行駛／停靠時間」，EffectiveDate 2025-06-03。
+   run 是依本頁正向站序排列的行駛秒數；dwell 是抵達下一站後的停靠秒數。
+   其他路線維持公開班距、站距與平均旅速模型。 */
+const TRTC_SERVICE_TIMINGS = Object.freeze({
+  "br:0": {run:[67,47,99,106,124,72,122,69,67,86,66,142,172,103,110,65,72,78,71,121,78,85,78],dwell:[25,25,25,25,25,25,25,30,45,30,25,25,25,25,25,25,25,25,25,25,25,25,0]},
+  "r:0": {run:[175,138,148,80,112,135,91,75,103,63,79,94,95,112,88,60,62,68,67,95,175,75,74,90,94,93],dwell:[25,25,25,25,25,28,23,24,26,26,26,26,26,26,34,28,28,35,26,30,31,25,37,26,29,0]},
+  "r:1": {run:[157],dwell:[0]},
+  "g:0": {run:[138,102,84,92,106,116,86,83,76,87,85,79,122,89,92,78,81,111],dwell:[27,27,33,35,35,28,34,27,38,33,30,29,27,27,27,24,25,0]},
+  "g:1": {run:[203],dwell:[0]},
+  "o:0": {run:[97,90,103,187,208,136,102,78,96,72,72,127,97,84,142,108,94,137,113,168],dwell:[28,29,29,33,33,38,30,30,30,33,26,25,25,25,25,25,25,25,25,0]},
+  "o:1": {run:[97,90,103,187,208,136,102,78,96,72,72,151,107,82,92,111],dwell:[28,29,29,33,33,38,30,30,30,33,26,25,25,25,25,0]},
+  "bl:0": {run:[180,95,106,142,102,67,107,77,192,110,120,66,81,90,65,71,77,87,76,107,109,112],dwell:[28,26,26,26,28,28,28,28,29,35,42,25,40,40,28,28,28,25,29,25,24,0]},
+  "y:0": {run:[145,111,79,84,194,104,72,111,153,191,143,95,135],dwell:[23,23,25,35,25,25,25,25,40,25,35,23,0]}
+});
+
 /* ================= 幾何 ================= */
 function haversineKm(a, b) {
   const dLat = (b[2] - a[2]) * Math.PI / 180;
@@ -841,24 +856,32 @@ const stationIndex = new Map(); // region|站名 -> {name, code, region, pt, lin
 
 for (const line of NET) {
   for (const svc of line.svc) {
+    const serviceId = line.id + ":" + line.svc.indexOf(svc);
     const st = svc.st;
     const n = st.length;
     const segCount = svc.loop ? n : n - 1;
     const segKm = [];
     for (let i = 0; i < segCount; i++) segKm.push(haversineKm(st[i], st[(i + 1) % n]));
     const vKmS = svc.hw.v / 3600;
-    const segSec = segKm.map(d => d / vKmS);
-    function profile(times) {
+    const officialTiming = TRTC_SERVICE_TIMINGS[serviceId] || null;
+    const segSec = officialTiming ? officialTiming.run.slice() : segKm.map(d => d / vKmS);
+    const dwellFwd = officialTiming
+      ? officialTiming.dwell.slice()
+      : segSec.map((_, i) => (!svc.loop && i === segSec.length - 1) ? 0 : svc.hw.dw);
+    function profile(times, dwellAfter) {
       const dep = [0];
       for (let i = 0; i < times.length; i++) {
-        const isLastArrival = !svc.loop && i === times.length - 1;
-        dep.push(dep[i] + times[i] + (isLastArrival ? 0 : svc.hw.dw));
+        dep.push(dep[i] + times[i] + dwellAfter[i]);
       }
       return dep;
     }
-    const fwd = profile(segSec);
+    const fwd = profile(segSec, dwellFwd);
     const segSecRev = segSec.slice().reverse();
-    const rev = profile(segSecRev);
+    const stationDwell = [0, ...dwellFwd];
+    const dwellRev = officialTiming
+      ? segSecRev.map((_, i) => stationDwell[n - 2 - i])
+      : segSecRev.map((_, i) => (!svc.loop && i === segSecRev.length - 1) ? 0 : svc.hw.dw);
+    const rev = profile(segSecRev, dwellRev);
     const pts = st.map(s => ({ x: s[4], y: s[5] }));
     // 各正向段的折線（含 via 折點）與長度（圖上單位）
     const vias = svc.vias || {};
@@ -872,8 +895,9 @@ for (const line of NET) {
       paths.push({ pts: pp, cum, len: cum[cum.length - 1] });
     }
     services.push({
-      serviceId: line.id + ":" + line.svc.indexOf(svc),
+      serviceId,
       line, svc, st, n, pts, paths, segKm, segSec, segSecRev,
+      dwellFwd, dwellRev, officialTiming: Boolean(officialTiming),
       durFwd: fwd[fwd.length - 1], durRev: rev[rev.length - 1],
       depFwd: fwd, depRev: rev,
       terminalA: st[0][1], terminalB: st[n - 1][1]
@@ -938,10 +962,20 @@ function departures(sv, isHol) {
    臺北市資料大平臺提供的是「列車進入月台」事件，不是逐車 GPS。
    事件只用來校正能唯一辨識的既有模擬班次；任何失敗都保留原模擬。 */
 const OFFICIAL_LINE_IDS = new Set(["br", "r", "g", "o", "bl"]);
+const OFFICIAL_SHORT_TURN_TERMINALS = Object.freeze({
+  "r|大安": 23,
+  "g|台電大樓": 11,
+  "bl|亞東醫院": 4
+});
 const OFFICIAL_FRESH_MS = 120e3;
 const OFFICIAL_STALE_MS = 10 * 60e3;
+const OFFICIAL_ANCHOR_VISIBLE_MS = 45e3;
 const OFFICIAL_MAX_FUTURE_MS = 30e3;
 const OFFICIAL_MAX_BYTES = 64 * 1024;
+const OFFICIAL_MAX_OFFSET_SEC = 300;
+const CORRECTION_MIN_SPEED = 0.25;
+const CORRECTION_MAX_SPEED = 2;
+const CORRECTION_MIN_DURATION_MS = 15e3;
 const DEFAULT_OFFICIAL_FEED_URL = "https://taipei-mrt-arrivals.jeffjihu.chatgpt.site/api/arrivals";
 const OFFICIAL_FEED_URL = typeof window.MRT_OFFICIAL_FEED_URL === "string"
   ? window.MRT_OFFICIAL_FEED_URL
@@ -979,6 +1013,15 @@ function parseTaipeiTimestamp(value) {
 function parseOfficialPayload(payload, knownNames, nowMs) {
   const rows = Array.isArray(payload) ? payload : payload && Array.isArray(payload.events) ? payload.events : null;
   if (!rows || rows.length > 500) throw new Error("invalid official feed shape");
+  let fetchedAtMs = 0;
+  if (!Array.isArray(payload) && payload.fetchedAt != null) {
+    fetchedAtMs = Date.parse(String(payload.fetchedAt));
+    if (!Number.isFinite(fetchedAtMs) ||
+        fetchedAtMs - nowMs > OFFICIAL_MAX_FUTURE_MS ||
+        nowMs - fetchedAtMs > OFFICIAL_STALE_MS) {
+      throw new Error("invalid official feed fetch time");
+    }
+  }
   const seen = new Set(), events = [];
   for (const row of rows) {
     if (!row || typeof row !== "object") continue;
@@ -996,7 +1039,7 @@ function parseOfficialPayload(payload, knownNames, nowMs) {
       destinationEn: typeof row.DestinationEn === "string" ? row.DestinationEn : ""
     });
   }
-  return { events, inputCount: rows.length };
+  return { events, inputCount: rows.length, fetchedAtMs };
 }
 function serviceClockAt(ms) {
   const d = new Date(ms + 8 * 3600e3);
@@ -1019,15 +1062,31 @@ function resolveOfficialEvent(event) {
     if (sv.line.region !== 0 || !OFFICIAL_LINE_IDS.has(sv.line.id)) continue;
     const stationIdx = sv.st.findIndex(st => st[1] === event.station);
     const destinationIdx = sv.st.findIndex(st => st[1] === event.destination);
-    if (stationIdx < 0 || destinationIdx < 0 || stationIdx === destinationIdx) continue;
-    const dir = destinationIdx > stationIdx ? 0 : 1;
+    const shortTerminalIdx = OFFICIAL_SHORT_TURN_TERMINALS[sv.line.id + "|" + event.destination];
+    if (stationIdx < 0 || destinationIdx < 0) continue;
+    const targetIdx = shortTerminalIdx == null ? destinationIdx : shortTerminalIdx;
+    let dir;
+    if (stationIdx === targetIdx) {
+      if (targetIdx === 0) dir = 1;
+      else if (targetIdx === sv.n - 1 || shortTerminalIdx != null) dir = 0;
+      else continue;
+    } else {
+      dir = targetIdx > stationIdx ? 0 : 1;
+    }
+    const terminal = dir === 0 ? sv.terminalB : sv.terminalA;
+    if (shortTerminalIdx == null && event.destination !== terminal) continue;
+    if (shortTerminalIdx != null && stationIdx !== targetIdx &&
+        ((dir === 0 && stationIdx > targetIdx) || (dir === 1 && stationIdx < targetIdx))) continue;
     const routeIdx = dir === 0 ? stationIdx : sv.n - 1 - stationIdx;
     const dep = dir === 0 ? sv.depFwd : sv.depRev;
-    const dwell = sv.svc.hw.dw;
+    const dwellAfter = dir === 0 ? sv.dwellFwd : sv.dwellRev;
     const arrivalElapsedSec = routeIdx === 0
       ? 0
-      : dep[routeIdx] - (routeIdx < dep.length - 1 ? dwell : 0);
-    candidates.push({ sv, dir, arrivalElapsedSec });
+      : dep[routeIdx] - dwellAfter[routeIdx - 1];
+    const shortDurationSec = shortTerminalIdx == null || routeIdx >= dep.length - 1
+      ? 0
+      : dep[(dir === 0 ? shortTerminalIdx : sv.n - 1 - shortTerminalIdx) + 1] - 0.01;
+    candidates.push({ sv, dir, arrivalElapsedSec, shortTerminalIdx, shortDurationSec });
   }
   return {
     candidates,
@@ -1043,6 +1102,7 @@ const officialFeed = {
   lastAttemptAt: 0,
   lastSuccessAt: 0,
   lastErrorAt: 0,
+  sourceFetchedAt: 0,
   latestEventAt: 0,
   events: [],
   seen: new Map(),
@@ -1092,7 +1152,7 @@ function updateOfficialBadge(nowMs = Date.now()) {
   const status = officialFeedStatus(nowMs);
   if (status === "fresh") {
     badge.textContent = officialFeed.events.length
-      ? "班表推估 · 非 GPS｜北捷 " + formatOfficialAge(officialFeed.latestEventAt, nowMs)
+      ? "融合推估 · 非 GPS｜北捷錨點 " + formatOfficialAge(officialFeed.latestEventAt, nowMs)
       : "班表推估 · 非 GPS｜北捷已連線";
     badge.dataset.feedState = "fresh";
   } else if (status === "stale") {
@@ -1116,13 +1176,22 @@ function correctionOffset(entry, nowMs = Date.now()) {
   const smooth = p * p * (3 - 2 * p);
   return entry.fromOffsetSec + (entry.targetOffsetSec - entry.fromOffsetSec) * smooth;
 }
+function correctionDurationMs(fromOffsetSec, targetOffsetSec) {
+  const delta = targetOffsetSec - fromOffsetSec;
+  if (Math.abs(delta) < 0.01) return 0;
+  const speedBudget = delta > 0
+    ? 1 - CORRECTION_MIN_SPEED
+    : CORRECTION_MAX_SPEED - 1;
+  const durationSec = 1.5 * Math.abs(delta) / speedBudget;
+  return Math.max(CORRECTION_MIN_DURATION_MS, Math.ceil(durationSec * 1000));
+}
 function matchOfficialEvent(event, resolved, assignedKeys, nowMs) {
   const { sv, dir, arrivalElapsedSec } = resolved;
   const clock = serviceClockAt(event.atMs);
   const deps = departures(sv, clock.isHol);
   const durationSec = dir === 0 ? sv.durFwd : sv.durRev;
   const hwSec = headwayAt(sv.svc.hw, clock.svcSec / 60, clock.isHol) * 60;
-  const toleranceSec = Math.min(300, Math.max(90, hwSec / 2));
+  const toleranceSec = Math.min(180, Math.max(45, hwSec * 0.4));
   const matches = [];
   for (const dep of deps) {
     const rawElapsedSec = clock.svcSec - dep * 60;
@@ -1134,11 +1203,17 @@ function matchOfficialEvent(event, resolved, assignedKeys, nowMs) {
     if (score <= toleranceSec) matches.push({ dep, trainKey, rawElapsedSec, score });
   }
   matches.sort((a, b) => a.score - b.score);
-  if (!matches.length || (matches[1] && matches[1].score - matches[0].score < 15)) return null;
+  const uniquenessMargin = Math.max(12, toleranceSec * 0.15);
+  if (!matches.length || (matches[1] && matches[1].score - matches[0].score < uniquenessMargin)) return null;
   const best = matches[0];
   return {
     ...best,
-    targetOffsetSec: best.rawElapsedSec - arrivalElapsedSec,
+    targetOffsetSec: Math.max(
+      -OFFICIAL_MAX_OFFSET_SEC,
+      Math.min(OFFICIAL_MAX_OFFSET_SEC, best.rawElapsedSec - arrivalElapsedSec)
+    ),
+    shortTerminalIdx: resolved.shortTerminalIdx,
+    shortDurationSec: resolved.shortDurationSec,
     nowMs
   };
 }
@@ -1150,7 +1225,18 @@ function applyOfficialEvents(events, nowMs) {
     if (nowMs - entry.eventAt > 3 * 3600e3) officialFeed.corrections.delete(key);
   }
   const assignedKeys = new Set();
-  for (const event of events) {
+  const orderedEvents = events.slice().sort((a, b) => {
+    const ac = a.resolution.candidate, bc = b.resolution.candidate;
+    if (!ac && !bc) return a.key.localeCompare(b.key);
+    if (!ac) return 1;
+    if (!bc) return -1;
+    const groupA = ac.sv.serviceId + "|" + ac.dir;
+    const groupB = bc.sv.serviceId + "|" + bc.dir;
+    return groupA.localeCompare(groupB) ||
+      bc.arrivalElapsedSec - ac.arrivalElapsedSec ||
+      a.atMs - b.atMs;
+  });
+  for (const event of orderedEvents) {
     if (nowMs - event.atMs > OFFICIAL_FRESH_MS || officialFeed.seen.has(event.key)) continue;
     officialFeed.seen.set(event.key, event.atMs);
     if (!event.resolution.candidate) continue;
@@ -1158,14 +1244,17 @@ function applyOfficialEvents(events, nowMs) {
     if (!matched) continue;
     assignedKeys.add(matched.trainKey);
     const previous = officialFeed.corrections.get(matched.trainKey);
+    const fromOffsetSec = correctionOffset(previous, nowMs);
     officialFeed.corrections.set(matched.trainKey, {
-      fromOffsetSec: correctionOffset(previous, nowMs),
+      fromOffsetSec,
       targetOffsetSec: matched.targetOffsetSec,
       startedAt: nowMs,
-      durationMs: 15e3,
+      durationMs: correctionDurationMs(fromOffsetSec, matched.targetOffsetSec),
       eventAt: event.atMs,
       station: event.station,
-      destination: event.destination
+      destination: event.destination,
+      shortTerminalIdx: matched.shortTerminalIdx,
+      shortDurationSec: matched.shortDurationSec
     });
   }
 }
@@ -1175,6 +1264,7 @@ function ingestOfficialPayload(payload, receivedAt = Date.now()) {
   const events = parsed.events.map(event => ({ ...event, resolution: resolveOfficialEvent(event) }));
   officialFeed.events = events;
   officialFeed.latestEventAt = events.reduce((latest, event) => Math.max(latest, event.atMs), 0);
+  officialFeed.sourceFetchedAt = parsed.fetchedAtMs || receivedAt;
   officialFeed.lastSuccessAt = receivedAt;
   applyOfficialEvents(events, receivedAt);
   updateOfficialBadge(receivedAt);
@@ -1226,7 +1316,7 @@ function freshOfficialStationEvents(stationName, nowMs = Date.now()) {
   if (officialFeedStatus(nowMs) !== "fresh") return [];
   return officialFeed.events.filter(event =>
     event.station === stationName &&
-    nowMs - event.atMs <= OFFICIAL_FRESH_MS &&
+    nowMs - event.atMs <= OFFICIAL_ANCHOR_VISIBLE_MS &&
     officialEventIsVisible(event)
   );
 }
@@ -1238,6 +1328,8 @@ window.__MRT_OFFICIAL_TEST__ = Object.freeze({
   parseOfficialPayload,
   resolveOfficialEvent,
   ingestOfficialPayload,
+  correctionDurationMs,
+  correctionOffset,
   status: officialFeedStatus
 });
 
@@ -1294,7 +1386,10 @@ function trainPositionAt(sv, dir, dep, tnow, nowMs = Date.now()) {
   const trainKey = officialTrainKey(sv, dir, dep);
   const correction = officialFeed.corrections.get(trainKey) || null;
   const rawElapsedSec = (tnow.svcMin - dep) * 60;
-  const durationSec = dir === 0 ? sv.durFwd : sv.durRev;
+  const fullDurationSec = dir === 0 ? sv.durFwd : sv.durRev;
+  const durationSec = correction && correction.shortDurationSec
+    ? Math.min(fullDurationSec, correction.shortDurationSec)
+    : fullDurationSec;
   const elapsedSec = Math.max(0, Math.min(
     durationSec,
     rawElapsedSec - correctionOffset(correction, nowMs)
@@ -1467,12 +1562,14 @@ function draw(tnow) {
     }
   }
 
-  // 官方到站事件只在車站畫提示環；不把事件列畫成另一批「真實列車」。
+  // 官方快照只在最近進站車站留下逐漸淡出的靜態錨點環；
+  // 不循環閃爍，也不把事件列畫成另一批「真實列車」。
   if (region === 0 && officialFeedStatus() === "fresh") {
     const newestByStation = new Map();
     const nowMs = Date.now();
     for (const event of officialFeed.events) {
-      if (nowMs - event.atMs > OFFICIAL_FRESH_MS) continue;
+      const ageMs = Math.max(0, nowMs - event.atMs);
+      if (ageMs > OFFICIAL_ANCHOR_VISIBLE_MS) continue;
       if (!officialEventIsVisible(event)) continue;
       const previous = newestByStation.get(event.station);
       if (!previous || event.atMs > previous.atMs) newestByStation.set(event.station, event);
@@ -1482,12 +1579,11 @@ function draw(tnow) {
       if (!st) continue;
       const p = toScreen(st.pt);
       if (p.x < -30 || p.x > W + 30 || p.y < -30 || p.y > H + 30) continue;
-      const phase = reduceMotion ? 0.35 : ((nowMs - event.atMs) % 1600) / 1600;
-      const radius = 8 + phase * 7;
+      const fade = 1 - Math.max(0, Math.min(1, (nowMs - event.atMs) / OFFICIAL_ANCHOR_VISIBLE_MS));
       ctx.beginPath();
-      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 9.5, 0, Math.PI * 2);
       ctx.strokeStyle = themeTokens.accent;
-      ctx.globalAlpha = 0.8 * (1 - phase) + 0.18;
+      ctx.globalAlpha = 0.78 * fade;
       ctx.lineWidth = 2.2;
       ctx.stroke();
       ctx.globalAlpha = 1;
@@ -1667,8 +1763,8 @@ function updatePopup(tnow) {
       ? "推估停靠 <b>" + pos.nextName + "</b> 中"
       : "推估下一站 <b>" + pos.nextName + "</b>・" + fmtEta(pos.secToNext) + "<br><span style='opacity:.75'>" + sv.svc.name + "・班距模型約 " + String(Math.floor(dep/60)%24).padStart(2,"0") + ":" + String(Math.floor(dep%60)).padStart(2,"0") + " 發車</span>";
     if (current.correction && Date.now() - current.correction.eventAt <= OFFICIAL_STALE_MS) {
-      meta += "<br><span style='color:var(--accent);font-weight:700'>已參考官方到站事件（" +
-        formatOfficialAge(current.correction.eventAt) + "）・其餘路段仍為推估</span>";
+      meta += "<br><span style='color:var(--accent);font-weight:700'>已用官方進站錨點校正（" +
+        formatOfficialAge(current.correction.eventAt) + "）・站間位置仍為模型推估</span>";
     }
     document.getElementById("popmeta").innerHTML = meta;
     pop.classList.add("show");
@@ -1682,9 +1778,9 @@ function updatePopup(tnow) {
     const arrivals = freshOfficialStationEvents(st.name);
     let meta = "交會路線：" + [...st.lines].join("・");
     if (arrivals.length) {
-      meta += "<br><span style='color:var(--accent);font-weight:700'>官方到站事件：" +
+      meta += "<br><span style='color:var(--accent);font-weight:700'>官方進站錨點：" +
         arrivals.slice(0, 2).map(event => "往" + event.destination + "・" + formatOfficialAge(event.atMs)).join("／") +
-        "</span><br><span style='opacity:.75'>事件代表列車進入月台，不是 GPS 位置</span>";
+        "</span><br><span style='opacity:.75'>這是過去進站回報，不是到站倒數或 GPS 位置</span>";
     }
     document.getElementById("popmeta").innerHTML = meta;
     pop.classList.add("show");
