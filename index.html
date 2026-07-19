@@ -126,6 +126,9 @@
     font-size: 13px;
     line-height: 1;
   }
+  .method-badge[data-feed-state="fresh"]::before { content: "●"; color: #16A367; font-size: 8px; }
+  .method-badge[data-feed-state="stale"]::before { content: "●"; color: #B87912; font-size: 8px; }
+  .method-badge[data-feed-state="offline"]::before { content: "○"; color: var(--muted); font-size: 10px; }
   .clockbox {
     pointer-events: auto;
     background: var(--panel);
@@ -552,6 +555,13 @@
     }
     .topbar .row { gap: 7px; }
     .brand { padding: 7px 10px; gap: 7px; }
+    .brand {
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 1px;
+      padding: 6px 10px;
+    }
     .brand h1 { font-size: 14px; }
     .method-badge { font-size: 8.5px; letter-spacing: 0.02em; }
     .clockbox { padding: 5px 9px; }
@@ -577,7 +587,7 @@
   <div class="row">
     <div class="brand">
       <h1>台灣捷運動態圖</h1>
-      <span class="method-badge">班表推估 · 非 GPS</span>
+      <span class="method-badge" id="methodBadge">班表推估 · 非 GPS</span>
     </div>
     <div class="clockbox">
       <div class="time" id="clock">--:--:--</div>
@@ -590,7 +600,7 @@
       <button id="tab1" role="tab" aria-selected="false">台中</button>
       <button id="tab2" role="tab" aria-selected="false">高雄</button>
     </div>
-    <div class="statpill">畫面顯示 <b id="traincount">0</b> 列 <small>推估</small></div>
+    <div class="statpill">畫面顯示 <b id="traincount">0</b> 列 <small>位置推估</small></div>
   </div>
 </div>
 
@@ -641,7 +651,7 @@
 <div class="modal-scrim" id="scrim">
   <div class="modal">
     <h2>資料方式與限制</h2>
-    <p><b>這是依公開班距與行車時間建立的動態推估</b>，不是車載 GPS 定位，也尚未連接捷運公司的逐車即時資料。列車依各線首末班時間、平日尖離峰／週末班距與站間實際距離、平均旅速推算位置，並以台北時間同步。它不反映臨時延誤、停駛、加班車、交路調度或逐站即時到站資訊。路線圖採「標準路網圖」式的示意排版（45°／90° 折線、等距站點），非地理實際位置。</p>
+    <p><b>所有車點仍是班表位置推估，不是逐車 GPS。</b> 北捷文湖、淡水信義、松山新店、中和新蘆與板南線會每 30 秒嘗試讀取官方「列車進入月台」事件；只在路線、方向與推估班次都能唯一判定時，才平滑校正既有車點。官方資料沒有列車編號、完整列車清單或站間座標，因此不能當成逐車連續定位。資料延遲或中斷時會自動保留原本的班表推估，其他路網也維持純推估。列車依各線首末班時間、平日尖離峰／週末班距與站間實際距離、平均旅速推算位置，並以台北時間同步；仍可能不反映臨時延誤、停駛、加班車或交路調度。路線圖採「標準路網圖」式示意排版，非地理實際位置。</p>
     <p><b>涵蓋路網（2026-07 營運中路段）</b></p>
     <ul>
       <li>台北捷運：文湖、淡水信義（含新北投支線）、松山新店（含小碧潭支線）、中和新蘆（蘆洲／迴龍雙分支）、板南、環狀線</li>
@@ -862,6 +872,7 @@ for (const line of NET) {
       paths.push({ pts: pp, cum, len: cum[cum.length - 1] });
     }
     services.push({
+      serviceId: line.id + ":" + line.svc.indexOf(svc),
       line, svc, st, n, pts, paths, segKm, segSec, segSecRev,
       durFwd: fwd[fwd.length - 1], durRev: rev[rev.length - 1],
       depFwd: fwd, depRev: rev,
@@ -923,6 +934,313 @@ function departures(sv, isHol) {
   return list;
 }
 
+/* ================= 北捷官方到站事件 =================
+   臺北市資料大平臺提供的是「列車進入月台」事件，不是逐車 GPS。
+   事件只用來校正能唯一辨識的既有模擬班次；任何失敗都保留原模擬。 */
+const OFFICIAL_LINE_IDS = new Set(["br", "r", "g", "o", "bl"]);
+const OFFICIAL_FRESH_MS = 120e3;
+const OFFICIAL_STALE_MS = 10 * 60e3;
+const OFFICIAL_MAX_FUTURE_MS = 30e3;
+const OFFICIAL_MAX_BYTES = 64 * 1024;
+const DEFAULT_OFFICIAL_FEED_URL = "https://taipei-mrt-arrivals.jeffjihu.chatgpt.site/api/arrivals";
+const OFFICIAL_FEED_URL = typeof window.MRT_OFFICIAL_FEED_URL === "string"
+  ? window.MRT_OFFICIAL_FEED_URL
+  : DEFAULT_OFFICIAL_FEED_URL;
+
+/* official-feed:pure:start */
+function normalizeOfficialName(value) {
+  return String(value == null ? "" : value)
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/臺/g, "台");
+}
+function resolveOfficialStationName(value, knownNames) {
+  const normalized = normalizeOfficialName(value);
+  if (!normalized) return null;
+  if (knownNames.has(normalized)) return knownNames.get(normalized);
+  if (normalized.endsWith("站")) {
+    const withoutSuffix = normalized.slice(0, -1);
+    if (knownNames.has(withoutSuffix)) return knownNames.get(withoutSuffix);
+  }
+  return null;
+}
+function parseTaipeiTimestamp(value) {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(value || ""));
+  if (!m) return NaN;
+  const y = +m[1], mon = +m[2], day = +m[3], hour = +m[4], min = +m[5], sec = +m[6];
+  const ms = Date.UTC(y, mon - 1, day, hour - 8, min, sec);
+  const check = new Date(ms + 8 * 3600e3);
+  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mon - 1 ||
+      check.getUTCDate() !== day || check.getUTCHours() !== hour ||
+      check.getUTCMinutes() !== min || check.getUTCSeconds() !== sec) return NaN;
+  return ms;
+}
+function parseOfficialPayload(payload, knownNames, nowMs) {
+  const rows = Array.isArray(payload) ? payload : payload && Array.isArray(payload.events) ? payload.events : null;
+  if (!rows || rows.length > 500) throw new Error("invalid official feed shape");
+  const seen = new Set(), events = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const station = resolveOfficialStationName(row.Station, knownNames);
+    const destination = resolveOfficialStationName(row.Destination, knownNames);
+    const atMs = parseTaipeiTimestamp(row.UpdateTime);
+    if (!station || !destination || !Number.isFinite(atMs)) continue;
+    if (atMs - nowMs > OFFICIAL_MAX_FUTURE_MS || nowMs - atMs > OFFICIAL_STALE_MS) continue;
+    const key = station + "|" + destination + "|" + row.UpdateTime;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    events.push({
+      key, station, destination, atMs,
+      stationEn: typeof row.StationEn === "string" ? row.StationEn : "",
+      destinationEn: typeof row.DestinationEn === "string" ? row.DestinationEn : ""
+    });
+  }
+  return { events, inputCount: rows.length };
+}
+function serviceClockAt(ms) {
+  const d = new Date(ms + 8 * 3600e3);
+  let svcSec = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
+  let dow = d.getUTCDay();
+  if (svcSec < 3 * 3600) { svcSec += 24 * 3600; dow = (dow + 6) % 7; }
+  return { svcSec, isHol: dow === 0 || dow === 6 };
+}
+/* official-feed:pure:end */
+
+const officialStationNames = new Map();
+for (const st of stationIndex.values()) {
+  if (st.region === 0) officialStationNames.set(normalizeOfficialName(st.name), st.name);
+}
+
+/* official-feed:mapping:start */
+function resolveOfficialEvent(event) {
+  const candidates = [];
+  for (const sv of services) {
+    if (sv.line.region !== 0 || !OFFICIAL_LINE_IDS.has(sv.line.id)) continue;
+    const stationIdx = sv.st.findIndex(st => st[1] === event.station);
+    const destinationIdx = sv.st.findIndex(st => st[1] === event.destination);
+    if (stationIdx < 0 || destinationIdx < 0 || stationIdx === destinationIdx) continue;
+    const dir = destinationIdx > stationIdx ? 0 : 1;
+    const routeIdx = dir === 0 ? stationIdx : sv.n - 1 - stationIdx;
+    const dep = dir === 0 ? sv.depFwd : sv.depRev;
+    const dwell = sv.svc.hw.dw;
+    const arrivalElapsedSec = routeIdx === 0
+      ? 0
+      : dep[routeIdx] - (routeIdx < dep.length - 1 ? dwell : 0);
+    candidates.push({ sv, dir, arrivalElapsedSec });
+  }
+  return {
+    candidates,
+    lineIds: [...new Set(candidates.map(c => c.sv.line.id))],
+    candidate: candidates.length === 1 ? candidates[0] : null
+  };
+}
+/* official-feed:mapping:end */
+
+const officialFeed = {
+  url: OFFICIAL_FEED_URL,
+  busy: false,
+  lastAttemptAt: 0,
+  lastSuccessAt: 0,
+  lastErrorAt: 0,
+  latestEventAt: 0,
+  events: [],
+  seen: new Map(),
+  corrections: new Map(),
+  pollTimer: null
+};
+
+function officialFeedStatus(nowMs = Date.now()) {
+  if (!officialFeed.url) return "disabled";
+  if (!officialFeed.lastSuccessAt) return officialFeed.lastAttemptAt ? "offline" : "loading";
+  if (officialFeed.events.length) {
+    const age = nowMs - officialFeed.latestEventAt;
+    if (age <= OFFICIAL_FRESH_MS) return "fresh";
+    if (age <= OFFICIAL_STALE_MS) return "stale";
+    return "offline";
+  }
+  const fetchAge = nowMs - officialFeed.lastSuccessAt;
+  if (fetchAge <= OFFICIAL_FRESH_MS) return "fresh";
+  if (fetchAge <= OFFICIAL_STALE_MS) return "stale";
+  return "offline";
+}
+function formatOfficialAge(atMs, nowMs = Date.now()) {
+  const sec = Math.max(0, Math.round((nowMs - atMs) / 1000));
+  if (sec < 5) return "剛更新";
+  if (sec < 60) return sec + "秒前";
+  return Math.round(sec / 60) + "分前";
+}
+function hasVisibleOfficialLine() {
+  return [...OFFICIAL_LINE_IDS].some(lineId => lineVisible.get(lineId));
+}
+function officialEventIsVisible(event) {
+  const candidateLineIds = event.resolution.lineIds.length
+    ? event.resolution.lineIds
+    : [...(stationIndex.get("0|" + event.station)?.lineIds || [])];
+  return candidateLineIds.some(lineId =>
+    OFFICIAL_LINE_IDS.has(lineId) && lineVisible.get(lineId)
+  );
+}
+function updateOfficialBadge(nowMs = Date.now()) {
+  const badge = document.getElementById("methodBadge");
+  if (!badge) return;
+  if (region !== 0 || !officialFeed.url || !hasVisibleOfficialLine()) {
+    badge.textContent = "班表推估 · 非 GPS";
+    badge.removeAttribute("data-feed-state");
+    return;
+  }
+  const status = officialFeedStatus(nowMs);
+  if (status === "fresh") {
+    badge.textContent = officialFeed.events.length
+      ? "班表推估 · 非 GPS｜北捷 " + formatOfficialAge(officialFeed.latestEventAt, nowMs)
+      : "班表推估 · 非 GPS｜北捷已連線";
+    badge.dataset.feedState = "fresh";
+  } else if (status === "stale") {
+    badge.textContent = "班表推估 · 非 GPS｜北捷延遲";
+    badge.dataset.feedState = "stale";
+  } else if (status === "loading") {
+    badge.textContent = "班表推估 · 非 GPS｜連線中";
+    badge.removeAttribute("data-feed-state");
+  } else {
+    badge.textContent = "班表推估 · 非 GPS｜北捷離線";
+    badge.dataset.feedState = "offline";
+  }
+}
+function officialTrainKey(sv, dir, dep) {
+  return sv.serviceId + "|" + dir + "|" + Math.round(dep * 60);
+}
+function correctionOffset(entry, nowMs = Date.now()) {
+  if (!entry) return 0;
+  if (!entry.durationMs) return entry.targetOffsetSec;
+  const p = Math.max(0, Math.min(1, (nowMs - entry.startedAt) / entry.durationMs));
+  const smooth = p * p * (3 - 2 * p);
+  return entry.fromOffsetSec + (entry.targetOffsetSec - entry.fromOffsetSec) * smooth;
+}
+function matchOfficialEvent(event, resolved, assignedKeys, nowMs) {
+  const { sv, dir, arrivalElapsedSec } = resolved;
+  const clock = serviceClockAt(event.atMs);
+  const deps = departures(sv, clock.isHol);
+  const durationSec = dir === 0 ? sv.durFwd : sv.durRev;
+  const hwSec = headwayAt(sv.svc.hw, clock.svcSec / 60, clock.isHol) * 60;
+  const toleranceSec = Math.min(300, Math.max(90, hwSec / 2));
+  const matches = [];
+  for (const dep of deps) {
+    const rawElapsedSec = clock.svcSec - dep * 60;
+    if (rawElapsedSec < -300 || rawElapsedSec > durationSec + 300) continue;
+    const trainKey = officialTrainKey(sv, dir, dep);
+    if (assignedKeys.has(trainKey)) continue;
+    const existing = officialFeed.corrections.get(trainKey);
+    const score = Math.abs(rawElapsedSec - correctionOffset(existing, event.atMs) - arrivalElapsedSec);
+    if (score <= toleranceSec) matches.push({ dep, trainKey, rawElapsedSec, score });
+  }
+  matches.sort((a, b) => a.score - b.score);
+  if (!matches.length || (matches[1] && matches[1].score - matches[0].score < 15)) return null;
+  const best = matches[0];
+  return {
+    ...best,
+    targetOffsetSec: best.rawElapsedSec - arrivalElapsedSec,
+    nowMs
+  };
+}
+function applyOfficialEvents(events, nowMs) {
+  for (const [key, atMs] of officialFeed.seen) {
+    if (nowMs - atMs > OFFICIAL_STALE_MS) officialFeed.seen.delete(key);
+  }
+  for (const [key, entry] of officialFeed.corrections) {
+    if (nowMs - entry.eventAt > 3 * 3600e3) officialFeed.corrections.delete(key);
+  }
+  const assignedKeys = new Set();
+  for (const event of events) {
+    if (nowMs - event.atMs > OFFICIAL_FRESH_MS || officialFeed.seen.has(event.key)) continue;
+    officialFeed.seen.set(event.key, event.atMs);
+    if (!event.resolution.candidate) continue;
+    const matched = matchOfficialEvent(event, event.resolution.candidate, assignedKeys, nowMs);
+    if (!matched) continue;
+    assignedKeys.add(matched.trainKey);
+    const previous = officialFeed.corrections.get(matched.trainKey);
+    officialFeed.corrections.set(matched.trainKey, {
+      fromOffsetSec: correctionOffset(previous, nowMs),
+      targetOffsetSec: matched.targetOffsetSec,
+      startedAt: nowMs,
+      durationMs: 15e3,
+      eventAt: event.atMs,
+      station: event.station,
+      destination: event.destination
+    });
+  }
+}
+function ingestOfficialPayload(payload, receivedAt = Date.now()) {
+  const parsed = parseOfficialPayload(payload, officialStationNames, receivedAt);
+  if (parsed.inputCount > 0 && parsed.events.length === 0) throw new Error("official feed contained no valid rows");
+  const events = parsed.events.map(event => ({ ...event, resolution: resolveOfficialEvent(event) }));
+  officialFeed.events = events;
+  officialFeed.latestEventAt = events.reduce((latest, event) => Math.max(latest, event.atMs), 0);
+  officialFeed.lastSuccessAt = receivedAt;
+  applyOfficialEvents(events, receivedAt);
+  updateOfficialBadge(receivedAt);
+  return events;
+}
+async function refreshOfficialFeed() {
+  if (!officialFeed.url || officialFeed.busy || document.hidden) return false;
+  officialFeed.busy = true;
+  officialFeed.lastAttemptAt = Date.now();
+  updateOfficialBadge();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(officialFeed.url, {
+      signal: controller.signal,
+      cache: "no-store",
+      credentials: "omit",
+      headers: { "Accept": "application/json" }
+    });
+    if (!response.ok) throw new Error("official feed HTTP " + response.status);
+    const declaredSize = Number(response.headers.get("content-length") || 0);
+    if (declaredSize > OFFICIAL_MAX_BYTES) throw new Error("official feed too large");
+    const text = await response.text();
+    if (new Blob([text]).size > OFFICIAL_MAX_BYTES) throw new Error("official feed too large");
+    ingestOfficialPayload(JSON.parse(text), Date.now());
+    return true;
+  } catch (error) {
+    officialFeed.lastErrorAt = Date.now();
+    updateOfficialBadge();
+    return false;
+  } finally {
+    clearTimeout(timeout);
+    officialFeed.busy = false;
+  }
+}
+function scheduleOfficialFeed(delayMs) {
+  if (!officialFeed.url) return;
+  clearTimeout(officialFeed.pollTimer);
+  officialFeed.pollTimer = setTimeout(async () => {
+    const ok = await refreshOfficialFeed();
+    scheduleOfficialFeed(ok ? 30e3 : 60e3);
+  }, delayMs);
+}
+function startOfficialFeed() {
+  if (!officialFeed.url) return;
+  refreshOfficialFeed().then(ok => scheduleOfficialFeed(ok ? 30e3 : 60e3));
+}
+function freshOfficialStationEvents(stationName, nowMs = Date.now()) {
+  if (officialFeedStatus(nowMs) !== "fresh") return [];
+  return officialFeed.events.filter(event =>
+    event.station === stationName &&
+    nowMs - event.atMs <= OFFICIAL_FRESH_MS &&
+    officialEventIsVisible(event)
+  );
+}
+
+window.__MRT_OFFICIAL_TEST__ = Object.freeze({
+  normalizeOfficialName,
+  resolveOfficialStationName,
+  parseTaipeiTimestamp,
+  parseOfficialPayload,
+  resolveOfficialEvent,
+  ingestOfficialPayload,
+  status: officialFeedStatus
+});
+
 /* ================= 列車位置推算 ================= */
 function pointOnPath(path, frac, backward) {
   let s = frac * path.len;
@@ -972,8 +1290,21 @@ function tripPos(sv, dir, elapsedSec) {
     secToNext, atStation
   };
 }
+function trainPositionAt(sv, dir, dep, tnow, nowMs = Date.now()) {
+  const trainKey = officialTrainKey(sv, dir, dep);
+  const correction = officialFeed.corrections.get(trainKey) || null;
+  const rawElapsedSec = (tnow.svcMin - dep) * 60;
+  const durationSec = dir === 0 ? sv.durFwd : sv.durRev;
+  const elapsedSec = Math.max(0, Math.min(
+    durationSec,
+    rawElapsedSec - correctionOffset(correction, nowMs)
+  ));
+  const pos = tripPos(sv, dir, elapsedSec);
+  return pos ? { pos, correction, trainKey, elapsedSec } : null;
+}
 function activeTrains(region, tnow) {
   const out = [];
+  const nowMs = Date.now();
   for (const sv of services) {
     if (sv.line.region !== region || !lineVisible.get(sv.line.id)) continue;
     const deps = departures(sv, tnow.isHol);
@@ -982,8 +1313,11 @@ function activeTrains(region, tnow) {
       for (const dm of deps) {
         if (tnow.svcMin < dm) break;
         if (tnow.svcMin > dm + dur) continue;
-        const pos = tripPos(sv, dir, (tnow.svcMin - dm) * 60);
-        if (pos) out.push({ sv, dir, dep: dm, pos });
+        const current = trainPositionAt(sv, dir, dm, tnow, nowMs);
+        if (current) out.push({
+          sv, dir, dep: dm, pos: current.pos,
+          officialCorrection: current.correction
+        });
       }
     }
   }
@@ -1049,6 +1383,7 @@ function readTheme() {
     bg: cs.getPropertyValue("--bg").trim(),
     ink: cs.getPropertyValue("--ink").trim(),
     muted: cs.getPropertyValue("--muted").trim(),
+    accent: cs.getPropertyValue("--accent").trim(),
     halo: cs.getPropertyValue("--halo").trim(),
     panel: cs.getPropertyValue("--panel-solid").trim()
   };
@@ -1132,6 +1467,33 @@ function draw(tnow) {
     }
   }
 
+  // 官方到站事件只在車站畫提示環；不把事件列畫成另一批「真實列車」。
+  if (region === 0 && officialFeedStatus() === "fresh") {
+    const newestByStation = new Map();
+    const nowMs = Date.now();
+    for (const event of officialFeed.events) {
+      if (nowMs - event.atMs > OFFICIAL_FRESH_MS) continue;
+      if (!officialEventIsVisible(event)) continue;
+      const previous = newestByStation.get(event.station);
+      if (!previous || event.atMs > previous.atMs) newestByStation.set(event.station, event);
+    }
+    for (const event of newestByStation.values()) {
+      const st = stationIndex.get("0|" + event.station);
+      if (!st) continue;
+      const p = toScreen(st.pt);
+      if (p.x < -30 || p.x > W + 30 || p.y < -30 || p.y > H + 30) continue;
+      const phase = reduceMotion ? 0.35 : ((nowMs - event.atMs) % 1600) / 1600;
+      const radius = 8 + phase * 7;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = themeTokens.accent;
+      ctx.globalAlpha = 0.8 * (1 - phase) + 0.18;
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
   // 列車：圓弧車頭 + 平直車尾，以非對稱輪廓辨識行進方向
   drawnTrains = [];
   const trains = activeTrains(region, tnow);
@@ -1194,6 +1556,7 @@ function frame() {
       String(tnow.hh).padStart(2,"0") + ":" + String(tnow.mm).padStart(2,"0") + ":" + String(tnow.ss).padStart(2,"0");
     document.getElementById("clocksub").textContent =
       "台北時間 " + tnow.dateStr + "（" + tnow.dowStr + "）" + (tnow.isHol ? "假日班距" : "平日班距");
+    updateOfficialBadge();
   }
   if (!reduceMotion || tnow.ss !== lastDrawSec) { draw(tnow); lastDrawSec = tnow.ss; }
   updatePopup(tnow);
@@ -1286,15 +1649,28 @@ function updatePopup(tnow) {
   if (!selected) return;
   if (selected.type === "train") {
     const { sv, dir, dep } = selected;
-    const pos = tripPos(sv, dir, (tnow.svcMin - dep) * 60);
-    if (!pos || tnow.svcMin < dep) { selected = null; pop.classList.remove("show"); return; }
+    const rawElapsedSec = (tnow.svcMin - dep) * 60;
+    const durationSec = dir === 0 ? sv.durFwd : sv.durRev;
+    if (rawElapsedSec < 0 || rawElapsedSec > durationSec) {
+      selected = null;
+      pop.classList.remove("show");
+      return;
+    }
+    const current = trainPositionAt(sv, dir, dep, tnow);
+    const pos = current && current.pos;
+    if (!pos) { selected = null; pop.classList.remove("show"); return; }
     const chip = document.getElementById("popline");
     chip.textContent = sv.line.name;
     chip.style.background = sv.line.color;
     document.getElementById("poptitle").textContent = "往 " + pos.destName;
-    document.getElementById("popmeta").innerHTML = pos.atStation
+    let meta = pos.atStation
       ? "推估停靠 <b>" + pos.nextName + "</b> 中"
       : "推估下一站 <b>" + pos.nextName + "</b>・" + fmtEta(pos.secToNext) + "<br><span style='opacity:.75'>" + sv.svc.name + "・班距模型約 " + String(Math.floor(dep/60)%24).padStart(2,"0") + ":" + String(Math.floor(dep%60)).padStart(2,"0") + " 發車</span>";
+    if (current.correction && Date.now() - current.correction.eventAt <= OFFICIAL_STALE_MS) {
+      meta += "<br><span style='color:var(--accent);font-weight:700'>已參考官方到站事件（" +
+        formatOfficialAge(current.correction.eventAt) + "）・其餘路段仍為推估</span>";
+    }
+    document.getElementById("popmeta").innerHTML = meta;
     pop.classList.add("show");
   } else {
     const st = stationIndex.get(selected.key);
@@ -1303,7 +1679,14 @@ function updatePopup(tnow) {
     chip.textContent = st.code;
     chip.style.background = "var(--muted)";
     document.getElementById("poptitle").textContent = st.name;
-    document.getElementById("popmeta").textContent = "交會路線：" + [...st.lines].join("・");
+    const arrivals = freshOfficialStationEvents(st.name);
+    let meta = "交會路線：" + [...st.lines].join("・");
+    if (arrivals.length) {
+      meta += "<br><span style='color:var(--accent);font-weight:700'>官方到站事件：" +
+        arrivals.slice(0, 2).map(event => "往" + event.destination + "・" + formatOfficialAge(event.atMs)).join("／") +
+        "</span><br><span style='opacity:.75'>事件代表列車進入月台，不是 GPS 位置</span>";
+    }
+    document.getElementById("popmeta").innerHTML = meta;
     pop.classList.add("show");
   }
 }
@@ -1430,6 +1813,7 @@ function setRegion(r) {
   }
   buildRouteSheet();
   fitRegion();
+  updateOfficialBadge();
 }
 document.getElementById("tab0").onclick = () => setRegion(0);
 document.getElementById("tab1").onclick = () => setRegion(1);
@@ -1454,9 +1838,18 @@ window.addEventListener("resize", () => {
   const orientationChanged = (oldW > oldH) !== (W > H);
   if (orientationChanged || Math.abs(W - oldW) > 80) fitRegion();
 });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && officialFeed.url) {
+    refreshOfficialFeed().then(ok => scheduleOfficialFeed(ok ? 30e3 : 60e3));
+  }
+});
+window.addEventListener("online", () => {
+  if (officialFeed.url) refreshOfficialFeed().then(ok => scheduleOfficialFeed(ok ? 30e3 : 60e3));
+});
 resize();
 setRegion(0);
 requestAnimationFrame(frame);
+startOfficialFeed();
 </script>
 </body>
 </html>
