@@ -258,8 +258,7 @@ test("官方狀態永遠保留非 GPS 揭露，純推估路線不顯示北捷連
     }];
     updateOfficialBadge(__now);
   `, sandbox);
-  assert.match(elements.get("methodBadge").textContent, /推估 · 非 GPS/);
-  assert.match(elements.get("methodBadge").textContent, /北捷/);
+  assert.equal(elements.get("methodBadge").textContent, "融合推估 · 非 GPS｜北捷資料已連線");
 
   vm.runInContext(`
     for (const key of lineVisible.keys()) lineVisible.set(key, false);
@@ -267,4 +266,10 @@ test("官方狀態永遠保留非 GPS 揭露，純推估路線不顯示北捷連
     updateOfficialBadge(__now);
   `, sandbox);
   assert.equal(elements.get("methodBadge").textContent, "班表推估 · 非 GPS");
+});
+
+test("官方進站事件只在背景校正，不畫車站光圈或顯示正數計時", () => {
+  assert.doesNotMatch(script, /OFFICIAL_ANCHOR_VISIBLE_MS|freshOfficialStationEvents/);
+  assert.doesNotMatch(script, /ctx\.arc\(p\.x,\s*p\.y,\s*9\.5/);
+  assert.doesNotMatch(script, /秒前|分前|官方進站錨點：/);
 });
