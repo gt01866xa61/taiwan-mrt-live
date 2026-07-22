@@ -24,6 +24,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check inline JavaScript syntax
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const vm = require('node:vm');
+
+          const html = fs.readFileSync('index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+          if (scripts.length === 0) {
+            throw new Error('No inline JavaScript found in index.html');
+          }
+
+          for (const [index, match] of scripts.entries()) {
+            new vm.Script(match[1], { filename: `index.html#script-${index + 1}` });
+          }
+          NODE
+
+      - name: Run regression tests
+        run: node --test tests/*.test.mjs
+
       - uses: actions/configure-pages@v5
         with:
           enablement: true

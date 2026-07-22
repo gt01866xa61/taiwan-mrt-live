@@ -16,6 +16,8 @@
     --muted: #5F7183;
     --hairline: rgba(22, 34, 46, 0.12);
     --accent: #0E9488;
+    --on-accent: #0B141F;
+    --accent-text: #08766D;
     --halo: #EFF3F6;
     --shadow: 0 4px 24px rgba(22, 34, 46, 0.14);
   }
@@ -28,6 +30,7 @@
       --muted: #93A6B8;
       --hairline: rgba(233, 241, 248, 0.12);
       --accent: #35C3B0;
+      --accent-text: #35C3B0;
       --halo: #0B141F;
       --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
     }
@@ -40,6 +43,7 @@
     --muted: #5F7183;
     --hairline: rgba(22, 34, 46, 0.12);
     --accent: #0E9488;
+    --accent-text: #08766D;
     --halo: #EFF3F6;
     --shadow: 0 4px 24px rgba(22, 34, 46, 0.14);
   }
@@ -51,6 +55,7 @@
     --muted: #93A6B8;
     --hairline: rgba(233, 241, 248, 0.12);
     --accent: #35C3B0;
+    --accent-text: #35C3B0;
     --halo: #0B141F;
     --shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
   }
@@ -179,7 +184,7 @@
   }
   .tabs button.on {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
   }
   .tabs button:focus-visible, .iconbtn:focus-visible, .route-menu-btn:focus-visible,
   .route-row:focus-visible, .preset-btn:focus-visible, .sheet-close:focus-visible,
@@ -352,7 +357,7 @@
   .preset-btn.on {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
   }
   .route-list {
     display: grid;
@@ -411,7 +416,7 @@
     border: 1px solid var(--hairline);
     border-radius: 13px;
     background: transparent;
-    color: var(--accent);
+    color: var(--accent-text);
     font: inherit;
     font-size: 13px;
     font-weight: 800;
@@ -443,7 +448,7 @@
     border: 0;
     border-radius: 12px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font: inherit;
     font-size: 13px;
     font-weight: 800;
@@ -471,7 +476,7 @@
     gap: 6px;
     font-size: 11px;
     font-weight: 800;
-    color: #fff;
+    color: var(--panel-solid);
     background: var(--c);
     border-radius: 6px;
     padding: 3px 8px;
@@ -524,7 +529,7 @@
     border: 0;
     border-radius: 12px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font: inherit;
     font-size: 14px;
     font-weight: 700;
@@ -532,7 +537,7 @@
   }
   .offbanner {
     position: absolute;
-    top: calc(112px + env(safe-area-inset-top));
+    top: calc(var(--topbar-bottom, 112px) + 8px);
     left: 50%;
     transform: translateX(-50%);
     background: var(--panel-solid);
@@ -576,6 +581,28 @@
     .tabs button { padding-inline: 12px; }
     .statpill { padding-inline: 10px; gap: 4px; }
     .route-list { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 350px) {
+    .brand { overflow: hidden; }
+    .method-badge {
+      display: block;
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .method-badge::before { margin-right: 4px; }
+    .clockbox { flex: 0 0 auto; max-width: 108px; padding-inline: 7px; }
+    .clockbox .sub { max-width: 90px; }
+    .topbar .row2 { gap: 6px; }
+    .tabs { flex: 1; min-width: 0; }
+    .tabs button {
+      flex: 1 1 0;
+      min-width: 0;
+      padding-inline: 6px;
+      white-space: nowrap;
+    }
+    .statpill { flex: 0 0 auto; padding-inline: 8px; }
   }
 </style>
 </head>
@@ -654,8 +681,8 @@
     <p><b>所有車點仍是融合位置推估，不是逐車 GPS。</b> 北捷文湖、淡水信義、松山新店、中和新蘆與板南線會每 30 秒讀取官方「列車進入月台」快照；只在路線、方向、終點與既有推估班次都能唯一判定時，才用官方進站錨點校正車點。校正只會讓列車減速或加速收斂，不會倒退或瞬移。文湖、紅、綠、橘、藍與環狀線的站間行駛／停靠秒數採北捷官方資料；資料延遲、歧義或中斷時則保留公開班距模型。官方免費資料沒有列車編號、完整列車清單或站間座標，因此不能當成逐車連續定位，仍可能不反映臨時延誤、停駛、加班車或交路調度。路線圖採「標準路網圖」式示意排版，非地理實際位置。</p>
     <p><b>涵蓋路網（2026-07 營運中路段）</b></p>
     <ul>
-      <li>台北捷運：文湖、淡水信義（含新北投支線）、松山新店（含小碧潭支線）、中和新蘆（蘆洲／迴龍雙分支）、板南、環狀線</li>
-      <li>新北捷運：三鶯線（2026-06-30 通車，試營運期間僅 10:00–20:00 行駛）、淡海輕軌綠山線／藍海線（紅樹林—崁頂／漁人碼頭，共用路段兩線交錯）、安坑輕軌（雙城—十四張）</li>
+      <li>台北捷運：文湖、淡水信義（含新北投支線）、松山新店（含小碧潭支線）、中和新蘆（蘆洲／迴龍雙分支）、板南</li>
+      <li>新北捷運：環狀線、三鶯線（2026-06-30 至 08-31 試營運：10:00–20:00，尖峰約 6 分、其餘約 8 分）、淡海輕軌綠山線／藍海線（紅樹林—崁頂／漁人碼頭，共用路段兩線交錯）、安坑輕軌（雙城—十四張）</li>
       <li>桃園機場捷運（台北車站—老街溪，以普通車班距模擬）</li>
       <li>台中捷運綠線（北屯總站—高鐵台中站）</li>
       <li>高雄捷運紅線（小港—岡山）、橘線、環狀輕軌（全環）</li>
@@ -723,7 +750,8 @@ const NET = [
    { name:"七張—小碧潭", hw:{fd:365,ld:1435,pk:10,op:12,lt:15,hl:12,dw:25,v:24}, st:[
      ["G03","七張",24.9752,121.5432,10,30.4],["G03A","小碧潭",24.9718,121.5299,8.9,31.5]]}]},
  { id:"o", region:0, name:"中和新蘆線", color:"#F8B61C", svc:[
-   { name:"南勢角—迴龍", hw:{fd:360,ld:1440,pk:6,op:10,lt:12,hl:10,dw:25,v:32},
+    { name:"南勢角—迴龍", departureGroup:"o-common", departureOrder:0,
+      hw:{fd:360,ld:1440,pk:6,op:10,lt:12,hl:10,dw:25,v:32},
      vias:{5:[[12.6,20]]}, st:[
      ["O01","南勢角",24.9899,121.5088,6,26.6],["O02","景安",24.9938,121.5045,7,25.6],["O03","永安市場",25.0025,121.5111,8,24.6],
      ["O04","頂溪",25.0138,121.5155,9,23.6],["O05","古亭",25.0261,121.5228,10,22.6],["O06","東門",25.0339,121.5288,11,21.6],
@@ -732,7 +760,8 @@ const NET = [
      ["O13","台北橋",25.0632,121.5005,7.7,16],["O14","菜寮",25.0602,121.4925,6.7,17],["O15","三重",25.0558,121.4847,5.7,18],
      ["O16","先嗇宮",25.0466,121.4718,4.7,19],["O17","頭前庄",25.0398,121.4600,3.7,20],["O18","新莊",25.0362,121.4525,2.7,21],
      ["O19","輔大",25.0328,121.4354,1.4,21],["O20","丹鳳",25.0290,121.4222,0.1,21],["O21","迴龍",25.0225,121.4113,-1.2,21]]},
-   { name:"南勢角—蘆洲", hw:{fd:360,ld:1440,pk:6,op:10,lt:12,hl:10,dw:25,v:32},
+    { name:"南勢角—蘆洲", departureGroup:"o-common", departureOrder:1,
+      hw:{fd:360,ld:1440,pk:6,op:10,lt:12,hl:10,dw:25,v:32},
      vias:{5:[[12.6,20]]}, st:[
      ["O01","南勢角",24.9899,121.5088,6,26.6],["O02","景安",24.9938,121.5045,7,25.6],["O03","永安市場",25.0025,121.5111,8,24.6],
      ["O04","頂溪",25.0138,121.5155,9,23.6],["O05","古亭",25.0261,121.5228,10,22.6],["O06","東門",25.0339,121.5288,11,21.6],
@@ -751,7 +780,8 @@ const NET = [
      ["BL19","永春",25.0409,121.5766,19.6,18],["BL20","後山埤",25.0450,121.5827,21,18],["BL21","昆陽",25.0505,121.5934,22.4,18],
      ["BL22","南港",25.0521,121.6067,23.8,18],["BL23","南港展覽館",25.0553,121.6174,25.3,16.5]]}]},
  { id:"lb", region:0, name:"三鶯線", color:"#54C0E8", svc:[
-   { name:"頂埔—鶯桃福德（試營運）", hw:{fd:600,ld:1200,pk:10,op:12,lt:12,hl:10,dw:25,v:33}, st:[
+    // 新北捷運 2026-06-30 至 08-31 試營運公告：17:30–19:30 約 6 分，其餘約 8 分。
+    { name:"頂埔—鶯桃福德（試營運）", hw:{fd:600,ld:1200,pk:6,op:8,lt:8,hl:8,pkWindows:[[17.5,19.5]],dw:25,v:33}, st:[
      ["LB01","頂埔",24.9602,121.4201,-0.9,28.9],["LB02","媽祖田",24.9482,121.4085,-1.9,29.9],["LB03","長壽山",24.9403,121.3965,-2.9,30.9],
      ["LB04","橫溪",24.9345,121.3855,-3.9,31.9],["LB05","龍埔",24.9328,121.3752,-5.2,31.9],["LB06","三峽",24.9350,121.3690,-6.5,31.9],
      ["LB07","台北大學",24.9425,121.3672,-7.8,31.9],["LB08","鶯歌車站",24.9540,121.3543,-9.1,31.9],["LB09","陶瓷老街",24.9495,121.3468,-10.1,30.9],
@@ -928,14 +958,15 @@ for (const sv of services) {
 }
 
 /* ================= 台北時間與時刻表 ================= */
-function taipeiNow() {
-  const t = Date.now() + 8 * 3600e3;   // 台灣固定 UTC+8、無夏令時間
+function taipeiNow(nowMs = Date.now()) {
+  const t = nowMs + 8 * 3600e3;   // 台灣固定 UTC+8、無夏令時間
   const d = new Date(t);
   const min = d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60 + d.getUTCMilliseconds() / 60000;
   let svcMin = min, dow = d.getUTCDay();
   if (min < 180) { svcMin += 1440; dow = (dow + 6) % 7; } // 凌晨 3 點前算前一營運日
+  const serviceDayMs = min < 180 ? t - 86400e3 : t;
   const isHol = (dow === 0 || dow === 6);
-  return { min, svcMin, isHol,
+  return { min, svcMin, isHol, serviceDayKey:formatServiceDayKey(new Date(serviceDayMs)),
     hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds(),
     dateStr: (d.getUTCMonth()+1) + "/" + d.getUTCDate(),
     dowStr: "日一二三四五六"[d.getUTCDay()] };
@@ -944,13 +975,40 @@ function headwayAt(hw, tMin, isHol) {
   if (tMin >= 1380) return hw.lt;                 // 23:00 後
   if (isHol) return hw.hl;
   const h = tMin / 60;
-  if ((h >= 7 && h < 9) || (h >= 17 && h < 19.5)) return hw.pk;
+  const peakWindows = hw.pkWindows || [[7, 9], [17, 19.5]];
+  if (peakWindows.some(([start, end]) => h >= start && h < end)) return hw.pk;
   return hw.op;
 }
 const schedCache = new Map();
+function buildDepartureGroup(group, isHol) {
+  const members = services
+    .filter(item => item.svc.departureGroup === group)
+    .sort((a, b) => (a.svc.departureOrder || 0) - (b.svc.departureOrder || 0));
+  if (!members.length) return;
+  const lists = new Map(members.map(member => [member, []]));
+  let t = Math.min(...members.map(member => member.svc.hw.fd));
+  const last = Math.max(...members.map(member => member.svc.hw.ld));
+  let turn = 0;
+  while (t <= last) {
+    const member = members[turn % members.length];
+    const hw = member.svc.hw;
+    if (t >= hw.fd && t <= hw.ld) lists.get(member).push(t);
+    const branchHeadway = headwayAt(hw, t, isHol);
+    t += branchHeadway / members.length;
+    turn++;
+  }
+  for (const member of members) {
+    const key = services.indexOf(member) + "|" + (isHol ? "H" : "W");
+    schedCache.set(key, lists.get(member));
+  }
+}
 function departures(sv, isHol) {
   const key = services.indexOf(sv) + "|" + (isHol ? "H" : "W");
   if (schedCache.has(key)) return schedCache.get(key);
+  if (sv.svc.departureGroup) {
+    buildDepartureGroup(sv.svc.departureGroup, isHol);
+    return schedCache.get(key) || [];
+  }
   const hw = sv.svc.hw, list = [];
   let t = hw.fd;
   while (t <= hw.ld) { list.push(t); t += headwayAt(hw, t, isHol); }
@@ -963,15 +1021,17 @@ function departures(sv, isHol) {
    事件只用來校正能唯一辨識的既有模擬班次；任何失敗都保留原模擬。 */
 const OFFICIAL_LINE_IDS = new Set(["br", "r", "g", "o", "bl"]);
 const OFFICIAL_SHORT_TURN_TERMINALS = Object.freeze({
-  "r|大安": 23,
-  "g|台電大樓": 11,
-  "bl|亞東醫院": 4
+  "r|大安": Object.freeze({ index:23, inboundDir:0 }),
+  "r|北投": Object.freeze({ index:6, inboundDir:1 }),
+  "g|台電大樓": Object.freeze({ index:11, inboundDir:0 }),
+  "bl|亞東醫院": Object.freeze({ index:4, inboundDir:1 })
 });
 const OFFICIAL_FRESH_MS = 120e3;
 const OFFICIAL_STALE_MS = 10 * 60e3;
 const OFFICIAL_MAX_FUTURE_MS = 30e3;
 const OFFICIAL_MAX_BYTES = 64 * 1024;
 const OFFICIAL_MAX_OFFSET_SEC = 300;
+const OFFICIAL_CORRECTION_MAX_AGE_MS = 3 * 3600e3;
 const CORRECTION_MIN_SPEED = 0.25;
 const CORRECTION_MAX_SPEED = 2;
 const CORRECTION_MIN_DURATION_MS = 15e3;
@@ -1040,12 +1100,20 @@ function parseOfficialPayload(payload, knownNames, nowMs) {
   }
   return { events, inputCount: rows.length, fetchedAtMs };
 }
+function formatServiceDayKey(d) {
+  return String(d.getUTCFullYear()) + "-" +
+    String(d.getUTCMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getUTCDate()).padStart(2, "0");
+}
 function serviceClockAt(ms) {
-  const d = new Date(ms + 8 * 3600e3);
+  const taipeiMs = ms + 8 * 3600e3;
+  const d = new Date(taipeiMs);
   let svcSec = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
   let dow = d.getUTCDay();
-  if (svcSec < 3 * 3600) { svcSec += 24 * 3600; dow = (dow + 6) % 7; }
-  return { svcSec, isHol: dow === 0 || dow === 6 };
+  const rollsBack = svcSec < 3 * 3600;
+  if (rollsBack) { svcSec += 24 * 3600; dow = (dow + 6) % 7; }
+  const serviceDay = new Date(rollsBack ? taipeiMs - 86400e3 : taipeiMs);
+  return { svcSec, isHol: dow === 0 || dow === 6, serviceDayKey:formatServiceDayKey(serviceDay) };
 }
 /* official-feed:pure:end */
 
@@ -1061,31 +1129,40 @@ function resolveOfficialEvent(event) {
     if (sv.line.region !== 0 || !OFFICIAL_LINE_IDS.has(sv.line.id)) continue;
     const stationIdx = sv.st.findIndex(st => st[1] === event.station);
     const destinationIdx = sv.st.findIndex(st => st[1] === event.destination);
-    const shortTerminalIdx = OFFICIAL_SHORT_TURN_TERMINALS[sv.line.id + "|" + event.destination];
     if (stationIdx < 0 || destinationIdx < 0) continue;
-    const targetIdx = shortTerminalIdx == null ? destinationIdx : shortTerminalIdx;
+    const shortTurn = OFFICIAL_SHORT_TURN_TERMINALS[sv.line.id + "|" + event.destination] || null;
+    if (shortTurn && (shortTurn.index >= sv.n || sv.st[shortTurn.index][1] !== event.destination)) continue;
+    const shortTerminalIdx = shortTurn ? shortTurn.index : null;
+    const targetIdx = shortTurn ? shortTurn.index : destinationIdx;
     let dir;
-    if (stationIdx === targetIdx) {
+    if (shortTurn) {
+      dir = shortTurn.inboundDir;
+      const approachesTarget = stationIdx === targetIdx ||
+        (dir === 0 ? stationIdx < targetIdx : stationIdx > targetIdx);
+      if (!approachesTarget) continue;
+    } else if (stationIdx === targetIdx) {
       if (targetIdx === 0) dir = 1;
-      else if (targetIdx === sv.n - 1 || shortTerminalIdx != null) dir = 0;
+      else if (targetIdx === sv.n - 1) dir = 0;
       else continue;
     } else {
       dir = targetIdx > stationIdx ? 0 : 1;
     }
     const terminal = dir === 0 ? sv.terminalB : sv.terminalA;
-    if (shortTerminalIdx == null && event.destination !== terminal) continue;
-    if (shortTerminalIdx != null && stationIdx !== targetIdx &&
-        ((dir === 0 && stationIdx > targetIdx) || (dir === 1 && stationIdx < targetIdx))) continue;
+    if (!shortTurn && event.destination !== terminal) continue;
     const routeIdx = dir === 0 ? stationIdx : sv.n - 1 - stationIdx;
     const dep = dir === 0 ? sv.depFwd : sv.depRev;
     const dwellAfter = dir === 0 ? sv.dwellFwd : sv.dwellRev;
     const arrivalElapsedSec = routeIdx === 0
       ? 0
       : dep[routeIdx] - dwellAfter[routeIdx - 1];
-    const shortDurationSec = shortTerminalIdx == null || routeIdx >= dep.length - 1
+    const targetRouteIdx = dir === 0 ? targetIdx : sv.n - 1 - targetIdx;
+    const shortDurationSec = !shortTurn || targetRouteIdx <= 0
       ? 0
-      : dep[(dir === 0 ? shortTerminalIdx : sv.n - 1 - shortTerminalIdx) + 1] - 0.01;
-    candidates.push({ sv, dir, arrivalElapsedSec, shortTerminalIdx, shortDurationSec });
+      : dep[targetRouteIdx] - 0.01;
+    candidates.push({
+      sv, dir, arrivalElapsedSec, shortTerminalIdx, shortDurationSec,
+      shortTerminalName:shortTurn ? event.destination : ""
+    });
   }
   return {
     candidates,
@@ -1136,9 +1213,9 @@ function updateOfficialBadge(nowMs = Date.now()) {
   }
   const status = officialFeedStatus(nowMs);
   if (status === "fresh") {
-    badge.textContent = officialFeed.events.length
-      ? "融合推估 · 非 GPS｜北捷資料已連線"
-      : "班表推估 · 非 GPS｜北捷已連線";
+    badge.textContent = hasRecentOfficialCorrection(nowMs)
+      ? "融合推估 · 非 GPS｜北捷進站事件正常"
+      : "班表推估 · 非 GPS｜北捷進站事件正常";
     badge.dataset.feedState = "fresh";
   } else if (status === "stale") {
     badge.textContent = "班表推估 · 非 GPS｜北捷延遲";
@@ -1151,8 +1228,32 @@ function updateOfficialBadge(nowMs = Date.now()) {
     badge.dataset.feedState = "offline";
   }
 }
-function officialTrainKey(sv, dir, dep) {
-  return sv.serviceId + "|" + dir + "|" + Math.round(dep * 60);
+function officialTrainKey(sv, dir, dep, serviceDayKey = serviceClockAt(Date.now()).serviceDayKey) {
+  return serviceDayKey + "|" + sv.serviceId + "|" + dir + "|" + Math.round(dep * 60);
+}
+function usableOfficialCorrection(trainKey, serviceDayKey, nowMs = Date.now()) {
+  const entry = officialFeed.corrections.get(trainKey) || null;
+  if (!entry || entry.serviceDayKey !== serviceDayKey ||
+      nowMs - entry.eventAt > OFFICIAL_CORRECTION_MAX_AGE_MS ||
+      entry.eventAt - nowMs > OFFICIAL_MAX_FUTURE_MS) return null;
+  return entry;
+}
+function hasRecentOfficialCorrection(nowMs = Date.now()) {
+  const clock = serviceClockAt(nowMs);
+  const tnow = { svcMin:clock.svcSec / 60, isHol:clock.isHol, serviceDayKey:clock.serviceDayKey };
+  for (const [trainKey, candidate] of officialFeed.corrections) {
+    if (!candidate.lineId || !lineVisible.get(candidate.lineId)) continue;
+    const entry = usableOfficialCorrection(trainKey, clock.serviceDayKey, nowMs);
+    if (!entry || nowMs - entry.eventAt > OFFICIAL_FRESH_MS) continue;
+    const sv = services.find(item => item.serviceId === entry.serviceId);
+    if (!sv || !Number.isFinite(entry.dep) || (entry.dir !== 0 && entry.dir !== 1)) continue;
+    const rawElapsedSec = (tnow.svcMin - entry.dep) * 60;
+    const fullDurationSec = entry.dir === 0 ? sv.durFwd : sv.durRev;
+    if (rawElapsedSec < 0 || rawElapsedSec > fullDurationSec) continue;
+    const current = trainPositionAt(sv, entry.dir, entry.dep, tnow, nowMs);
+    if (current && current.correction === entry) return true;
+  }
+  return false;
 }
 function correctionOffset(entry, nowMs = Date.now()) {
   if (!entry) return 0;
@@ -1181,7 +1282,7 @@ function matchOfficialEvent(event, resolved, assignedKeys, nowMs) {
   for (const dep of deps) {
     const rawElapsedSec = clock.svcSec - dep * 60;
     if (rawElapsedSec < -300 || rawElapsedSec > durationSec + 300) continue;
-    const trainKey = officialTrainKey(sv, dir, dep);
+    const trainKey = officialTrainKey(sv, dir, dep, clock.serviceDayKey);
     if (assignedKeys.has(trainKey)) continue;
     const existing = officialFeed.corrections.get(trainKey);
     const score = Math.abs(rawElapsedSec - correctionOffset(existing, event.atMs) - arrivalElapsedSec);
@@ -1199,6 +1300,12 @@ function matchOfficialEvent(event, resolved, assignedKeys, nowMs) {
     ),
     shortTerminalIdx: resolved.shortTerminalIdx,
     shortDurationSec: resolved.shortDurationSec,
+    shortTerminalName: resolved.shortTerminalName,
+    lineId: sv.line.id,
+    serviceId: sv.serviceId,
+    dir,
+    dep: best.dep,
+    serviceDayKey: clock.serviceDayKey,
     nowMs
   };
 }
@@ -1207,7 +1314,7 @@ function applyOfficialEvents(events, nowMs) {
     if (nowMs - atMs > OFFICIAL_STALE_MS) officialFeed.seen.delete(key);
   }
   for (const [key, entry] of officialFeed.corrections) {
-    if (nowMs - entry.eventAt > 3 * 3600e3) officialFeed.corrections.delete(key);
+    if (nowMs - entry.eventAt > OFFICIAL_CORRECTION_MAX_AGE_MS) officialFeed.corrections.delete(key);
   }
   const assignedKeys = new Set();
   const orderedEvents = events.slice().sort((a, b) => {
@@ -1238,8 +1345,14 @@ function applyOfficialEvents(events, nowMs) {
       eventAt: event.atMs,
       station: event.station,
       destination: event.destination,
+      lineId: matched.lineId,
+      serviceId: matched.serviceId,
+      dir: matched.dir,
+      dep: matched.dep,
+      serviceDayKey: matched.serviceDayKey,
       shortTerminalIdx: matched.shortTerminalIdx,
-      shortDurationSec: matched.shortDurationSec
+      shortDurationSec: matched.shortDurationSec,
+      shortTerminalName: matched.shortTerminalName
     });
   }
 }
@@ -1359,23 +1472,27 @@ function tripPos(sv, dir, elapsedSec) {
   };
 }
 function trainPositionAt(sv, dir, dep, tnow, nowMs = Date.now()) {
-  const trainKey = officialTrainKey(sv, dir, dep);
-  const correction = officialFeed.corrections.get(trainKey) || null;
+  const serviceDayKey = tnow.serviceDayKey || serviceClockAt(nowMs).serviceDayKey;
+  const trainKey = officialTrainKey(sv, dir, dep, serviceDayKey);
+  const correction = usableOfficialCorrection(trainKey, serviceDayKey, nowMs);
   const rawElapsedSec = (tnow.svcMin - dep) * 60;
   const fullDurationSec = dir === 0 ? sv.durFwd : sv.durRev;
   const durationSec = correction && correction.shortDurationSec
     ? Math.min(fullDurationSec, correction.shortDurationSec)
     : fullDurationSec;
-  const elapsedSec = Math.max(0, Math.min(
-    durationSec,
-    rawElapsedSec - correctionOffset(correction, nowMs)
-  ));
+  const correctedElapsedSec = rawElapsedSec - correctionOffset(correction, nowMs);
+  if (correction && correction.shortDurationSec && correctedElapsedSec > durationSec) return null;
+  const elapsedSec = Math.max(0, Math.min(durationSec, correctedElapsedSec));
   const pos = tripPos(sv, dir, elapsedSec);
+  const shortTerminalName = correction && (correction.shortTerminalName ||
+    (correction.shortTerminalIdx != null ? correction.destination : ""));
+  if (pos && shortTerminalName) pos.destName = shortTerminalName;
   return pos ? { pos, correction, trainKey, elapsedSec } : null;
 }
-function activeTrains(region, tnow) {
+function activeTrains(region, tnow, nowMs = Date.now()) {
   const out = [];
-  const nowMs = Date.now();
+  const serviceDayKey = tnow.serviceDayKey || serviceClockAt(nowMs).serviceDayKey;
+  const serviceNow = tnow.serviceDayKey ? tnow : { ...tnow, serviceDayKey };
   for (const sv of services) {
     if (sv.line.region !== region || !lineVisible.get(sv.line.id)) continue;
     const deps = departures(sv, tnow.isHol);
@@ -1384,9 +1501,10 @@ function activeTrains(region, tnow) {
       for (const dm of deps) {
         if (tnow.svcMin < dm) break;
         if (tnow.svcMin > dm + dur) continue;
-        const current = trainPositionAt(sv, dir, dm, tnow, nowMs);
+        const current = trainPositionAt(sv, dir, dm, serviceNow, nowMs);
         if (current) out.push({
           sv, dir, dep: dm, pos: current.pos,
+          serviceDayKey, trainKey: current.trainKey,
           officialCorrection: current.correction
         });
       }
@@ -1437,7 +1555,9 @@ function visibleBounds(r) {
 function fitRegion() {
   const b = visibleBounds(region);
   const sidePad = W <= 560 ? 30 : 50;
-  const topPad = W <= 560 ? 128 : 138;
+  const topbarBottom = document.querySelector?.(".topbar")?.getBoundingClientRect?.().bottom;
+  const topPad = Number.isFinite(topbarBottom) ? Math.ceil(topbarBottom + 12) : (W <= 560 ? 128 : 138);
+  document.documentElement.style.setProperty("--topbar-bottom", Math.ceil(topPad - 12) + "px");
   const bottomPad = W <= 560 ? 78 : 84;
   const usableH = Math.max(140, H - topPad - bottomPad);
   const s = Math.min((W - sidePad*2) / Math.max(1, b.x1 - b.x0), usableH / Math.max(1, b.y1 - b.y0));
@@ -1545,7 +1665,8 @@ function draw(tnow) {
   for (const tr of trains) {
     const p = toScreen(tr.pos);
     if (p.x < -24 || p.x > W+24 || p.y < -24 || p.y > H+24) { drawnTrains.push({ ...tr, sx:-999, sy:-999 }); continue; }
-    const isSel = selected && selected.type === "train" && selected.sv === tr.sv && selected.dir === tr.dir && selected.dep === tr.dep;
+    const isSel = selected && selected.type === "train" && selected.sv === tr.sv &&
+      selected.dir === tr.dir && selected.dep === tr.dep && selected.serviceDayKey === tr.serviceDayKey;
     const k = isSel ? kBase * 1.3 : kBase;
     const ang = Math.atan2(tr.pos.hy, tr.pos.hx);
     ctx.save();
@@ -1668,7 +1789,10 @@ function handleTap(x, y) {
   let best = null, bd = 22;
   for (const tr of drawnTrains) {
     const d = Math.hypot(tr.sx - x, tr.sy - y);
-    if (d < bd) { bd = d; best = { type:"train", sv:tr.sv, dir:tr.dir, dep:tr.dep }; }
+    if (d < bd) {
+      bd = d;
+      best = { type:"train", sv:tr.sv, dir:tr.dir, dep:tr.dep, serviceDayKey:tr.serviceDayKey };
+    }
   }
   if (!best) {
     bd = 22;
@@ -1693,6 +1817,11 @@ function updatePopup(tnow) {
   if (!selected) return;
   if (selected.type === "train") {
     const { sv, dir, dep } = selected;
+    if (selected.serviceDayKey && selected.serviceDayKey !== tnow.serviceDayKey) {
+      selected = null;
+      pop.classList.remove("show");
+      return;
+    }
     const rawElapsedSec = (tnow.svcMin - dep) * 60;
     const durationSec = dir === 0 ? sv.durFwd : sv.durRev;
     if (rawElapsedSec < 0 || rawElapsedSec > durationSec) {
@@ -1706,6 +1835,7 @@ function updatePopup(tnow) {
     const chip = document.getElementById("popline");
     chip.textContent = sv.line.name;
     chip.style.background = sv.line.color;
+    chip.style.color = hexLuma(sv.line.color) > 0.4 ? "#16222E" : "#FFFFFF";
     document.getElementById("poptitle").textContent = "往 " + pos.destName;
     let meta = pos.atStation
       ? "推估停靠 <b>" + pos.nextName + "</b> 中"
@@ -1721,6 +1851,7 @@ function updatePopup(tnow) {
     const chip = document.getElementById("popline");
     chip.textContent = st.code;
     chip.style.background = "var(--muted)";
+    chip.style.color = "";
     document.getElementById("poptitle").textContent = st.name;
     const meta = "交會路線：" + [...st.lines].join("・");
     document.getElementById("popmeta").innerHTML = meta;

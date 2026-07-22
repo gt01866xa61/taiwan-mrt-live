@@ -129,17 +129,48 @@ test("北捷核心線套用官方逐站秒數，其他路網保留距離模型",
   assert.equal(result.taichungOfficial, false);
 });
 
+test("三鶯線試營運時段與尖離峰班距符合 2026 年 7 月公告", () => {
+  const { sandbox } = boot();
+  const schedule = vm.runInContext(`
+    (() => {
+      const sanying = services.find(item => item.serviceId === "lb:0");
+      return {
+        first:sanying.svc.hw.fd,
+        last:sanying.svc.hw.ld,
+        beforeEveningPeak:headwayAt(sanying.svc.hw, 17.25 * 60, false),
+        eveningPeak:headwayAt(sanying.svc.hw, 18 * 60, false),
+        weekdayOffPeak:headwayAt(sanying.svc.hw, 12 * 60, false),
+        holiday:headwayAt(sanying.svc.hw, 18 * 60, true)
+      };
+    })()
+  `, sandbox);
+  assert.equal(schedule.first, 600);
+  assert.equal(schedule.last, 1200);
+  assert.equal(schedule.beforeEveningPeak, 8);
+  assert.equal(schedule.eveningPeak, 6);
+  assert.equal(schedule.weekdayOffPeak, 8);
+  assert.equal(schedule.holiday, 8);
+});
+
 test("匯入唯一官方事件不增加或刪除模擬列車", () => {
   const { sandbox } = boot();
-  const tnow = { svcMin:1175.57, isHol:true };
-  sandbox.__tnow = tnow;
-  const before = vm.runInContext("activeTrains(0, __tnow).map(t => officialTrainKey(t.sv,t.dir,t.dep)).sort().join(',')", sandbox);
   const receivedAt = Date.UTC(2026, 6, 19, 11, 36, 0);
+  sandbox.__receivedAt = receivedAt;
+  vm.runInContext(`
+    const __clock = serviceClockAt(__receivedAt);
+    var __tnow = {
+      svcMin:__clock.svcSec / 60,
+      isHol:__clock.isHol,
+      serviceDayKey:__clock.serviceDayKey
+    };
+  `, sandbox);
+  const before = vm.runInContext("activeTrains(0, __tnow, __receivedAt).map(t => t.trainKey).sort().join(',')", sandbox);
   sandbox.__MRT_OFFICIAL_TEST__.ingestOfficialPayload([
     { Station:"大安站", Destination:"動物園站", UpdateTime:"20260719193534" }
   ], receivedAt);
   assert.ok(vm.runInContext("officialFeed.corrections.size", sandbox) >= 1);
-  const after = vm.runInContext("activeTrains(0, __tnow).map(t => officialTrainKey(t.sv,t.dir,t.dep)).sort().join(',')", sandbox);
+  assert.equal(vm.runInContext("activeTrains(0, __tnow, __receivedAt).some(t => Boolean(t.officialCorrection))", sandbox), true);
+  const after = vm.runInContext("activeTrains(0, __tnow, __receivedAt).map(t => t.trainKey).sort().join(',')", sandbox);
   assert.equal(after, before);
 });
 
@@ -150,29 +181,36 @@ test("官方校正接近首末站時仍保留原列車集合", () => {
       const sv = services.find(item => item.line.id === "br");
       const dep = departures(sv, true)[0];
       const durationMin = sv.durFwd / 60;
+      const nowMs = Date.now();
+      const serviceDayKey = serviceClockAt(nowMs).serviceDayKey;
       const snapshots = [];
       for (const sample of [
         { svcMin:dep, offset:300 },
         { svcMin:dep + durationMin, offset:-300 }
       ]) {
-        const tnow = { svcMin:sample.svcMin, isHol:true };
-        const before = activeTrains(0, tnow).map(t => officialTrainKey(t.sv,t.dir,t.dep)).sort().join(",");
-        const key = officialTrainKey(sv, 0, dep);
+        const tnow = { svcMin:sample.svcMin, isHol:true, serviceDayKey };
+        const before = activeTrains(0, tnow).map(t => t.trainKey).sort().join(",");
+        const key = officialTrainKey(sv, 0, dep, serviceDayKey);
         officialFeed.corrections.set(key, {
           targetOffsetSec:sample.offset,
           fromOffsetSec:sample.offset,
           durationMs:0,
-          startedAt:0,
-          eventAt:Date.now()
+          startedAt:nowMs,
+          eventAt:nowMs,
+          serviceDayKey
         });
-        const after = activeTrains(0, tnow).map(t => officialTrainKey(t.sv,t.dir,t.dep)).sort().join(",");
-        snapshots.push({ before, after });
+        const current = trainPositionAt(sv, 0, dep, tnow, nowMs);
+        const after = activeTrains(0, tnow).map(t => t.trainKey).sort().join(",");
+        snapshots.push({ before, after, correctionApplied:Boolean(current?.correction) });
         officialFeed.corrections.clear();
       }
       return snapshots;
     })()
   `, sandbox);
-  for (const snapshot of result) assert.equal(snapshot.after, snapshot.before);
+  for (const snapshot of result) {
+    assert.equal(snapshot.correctionApplied, true);
+    assert.equal(snapshot.after, snapshot.before);
+  }
 });
 
 test("最大正負校正都維持單向且限制在 0.25x 至 2x", () => {
@@ -224,6 +262,163 @@ test("列車離開原班表生命週期後會關閉選取泡泡", () => {
   assert.equal(elements.get("popup").classList.contains("show"), false);
 });
 
+test("短折返列車停在短終點、顯示短終點，停靠結束後退役", () => {
+  const { sandbox, elements } = boot();
+  const result = vm.runInContext(`
+    (() => {
+      const sv = services.find(item => item.serviceId === "r:0");
+      const resolved = resolveOfficialEvent({ station:"中正紀念堂", destination:"大安" }).candidate;
+      const serviceDayKey = "2026-07-23";
+      const dep = departures(sv, false).find(value => value >= 600);
+      const trainKey = officialTrainKey(sv, resolved.dir, dep, serviceDayKey);
+      officialFeed.corrections.set(trainKey, {
+        fromOffsetSec:0,
+        targetOffsetSec:0,
+        durationMs:0,
+        startedAt:Date.now(),
+        eventAt:Date.now(),
+        station:"中正紀念堂",
+        destination:"大安",
+        shortTerminalIdx:resolved.shortTerminalIdx,
+        shortDurationSec:resolved.shortDurationSec,
+        shortTerminalName:resolved.shortTerminalName,
+        serviceDayKey
+      });
+
+      const beforeEnd = {
+        svcMin:dep + (resolved.shortDurationSec - 0.02) / 60,
+        isHol:false,
+        serviceDayKey
+      };
+      const current = trainPositionAt(sv, resolved.dir, dep, beforeEnd);
+      selected = { type:"train", sv, dir:resolved.dir, dep };
+      updatePopup(beforeEnd);
+      const popupTitle = document.getElementById("poptitle").textContent;
+
+      const afterEnd = {
+        svcMin:dep + (resolved.shortDurationSec + 0.02) / 60,
+        isHol:false,
+        serviceDayKey
+      };
+      const sameTrainStillActive = activeTrains(0, afterEnd).some(train =>
+        train.sv === sv && train.dir === resolved.dir && train.dep === dep
+      );
+      selected = { type:"train", sv, dir:resolved.dir, dep };
+      updatePopup(afterEnd);
+
+      return {
+        nextName:current?.pos?.nextName,
+        destName:current?.pos?.destName,
+        popupTitle,
+        sameTrainStillActive,
+        popupClosed:selected === null
+      };
+    })()
+  `, sandbox);
+
+  assert.equal(result.nextName, "大安");
+  assert.equal(result.destName, "大安");
+  assert.equal(result.popupTitle, "往 大安");
+  assert.equal(result.sameTrainStillActive, false);
+  assert.equal(result.popupClosed, true);
+  assert.equal(elements.get("popup").classList.contains("show"), false);
+});
+
+test("四個短折返終點只接受其實際進站方向", () => {
+  const { sandbox } = boot();
+  const result = vm.runInContext(`
+    (() => {
+      const cases = [
+        ["中正紀念堂", "大安", 0],
+        ["信義安和", "大安", null],
+        ["奇岩", "北投", 1],
+        ["紅樹林", "北投", null],
+        ["古亭", "台電大樓", 0],
+        ["公館", "台電大樓", null],
+        ["府中", "亞東醫院", 1],
+        ["土城", "亞東醫院", null]
+      ];
+      return cases.map(([station, destination, expected]) => ({
+        station,
+        destination,
+        expected,
+        actual:resolveOfficialEvent({ station, destination }).candidate?.dir ?? null
+      }));
+    })()
+  `, sandbox);
+  for (const item of result) {
+    assert.equal(item.actual, item.expected, `${item.station}→${item.destination}`);
+  }
+});
+
+test("橘線迴龍與蘆洲交路在共線區不產生完全重疊列車", () => {
+  const { sandbox } = boot();
+  const overlap = vm.runInContext(`
+    (() => {
+      for (const key of lineVisible.keys()) lineVisible.set(key, key === "o");
+      for (let svcMin = 360; svcMin <= 480; svcMin += 0.5) {
+        const trains = activeTrains(0, {
+          svcMin,
+          isHol:true,
+          serviceDayKey:"2026-07-19"
+        }).filter(train => train.sv.line.id === "o");
+        for (let i = 0; i < trains.length; i++) {
+          for (let j = i + 1; j < trains.length; j++) {
+            const a = trains[i], b = trains[j];
+            if (a.sv.serviceId === b.sv.serviceId || a.dir !== b.dir) continue;
+            if (a.pos.nextName !== b.pos.nextName) continue;
+            if (Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y) < 1e-9) {
+              return { svcMin, dir:a.dir, nextName:a.pos.nextName };
+            }
+          }
+        }
+      }
+      return null;
+    })()
+  `, sandbox);
+  assert.equal(overlap, null);
+});
+
+test("舊營運日校正不會套到隔週相同發車時間", () => {
+  const { sandbox } = boot();
+  const result = vm.runInContext(`
+    (() => {
+      const firstMs = Date.UTC(2026, 6, 19, 2, 0, 0);
+      const nextMs = Date.UTC(2026, 6, 26, 2, 0, 0);
+      const firstClock = serviceClockAt(firstMs);
+      const nextClock = serviceClockAt(nextMs);
+      const sv = services.find(item => item.serviceId === "r:0");
+      const dep = departures(sv, firstClock.isHol).find(value => value >= 600);
+      const firstKey = officialTrainKey(sv, 0, dep, firstClock.serviceDayKey);
+      const nextKey = officialTrainKey(sv, 0, dep, nextClock.serviceDayKey);
+      officialFeed.corrections.set(firstKey, {
+        fromOffsetSec:60,
+        targetOffsetSec:60,
+        durationMs:0,
+        startedAt:firstMs,
+        eventAt:firstMs,
+        serviceDayKey:firstClock.serviceDayKey
+      });
+      const current = trainPositionAt(sv, 0, dep, {
+        svcMin:nextClock.svcSec / 60,
+        isHol:nextClock.isHol,
+        serviceDayKey:nextClock.serviceDayKey
+      }, nextMs);
+      return {
+        firstDay:firstClock.serviceDayKey,
+        nextDay:nextClock.serviceDayKey,
+        firstKey,
+        nextKey,
+        correctionApplied:Boolean(current?.correction)
+      };
+    })()
+  `, sandbox);
+  assert.equal(result.firstDay, "2026-07-19");
+  assert.equal(result.nextDay, "2026-07-26");
+  assert.notEqual(result.firstKey, result.nextKey);
+  assert.equal(result.correctionApplied, false);
+});
+
 test("跨線歧義事件只保留車站提示，不校正列車", () => {
   const { sandbox } = boot();
   const receivedAt = Date.UTC(2026, 6, 19, 11, 36, 0);
@@ -258,7 +453,40 @@ test("官方狀態永遠保留非 GPS 揭露，純推估路線不顯示北捷連
     }];
     updateOfficialBadge(__now);
   `, sandbox);
-  assert.equal(elements.get("methodBadge").textContent, "融合推估 · 非 GPS｜北捷資料已連線");
+  assert.equal(elements.get("methodBadge").textContent, "班表推估 · 非 GPS｜北捷進站事件正常");
+
+  vm.runInContext(`
+    (() => {
+      const clock = serviceClockAt(__now);
+      const sv = services.find(item => item.serviceId === "br:0");
+      const dep = departures(sv, clock.isHol).find(value => {
+        const elapsed = clock.svcSec - value * 60;
+        return elapsed >= 0 && elapsed <= sv.durFwd;
+      });
+      const trainKey = officialTrainKey(sv, 0, dep, clock.serviceDayKey);
+      officialFeed.corrections.set(trainKey, {
+        fromOffsetSec:0,
+        targetOffsetSec:0,
+        durationMs:0,
+        startedAt:__now,
+        eventAt:__now - 10000,
+        lineId:sv.line.id,
+        serviceId:sv.serviceId,
+        dir:0,
+        dep,
+        serviceDayKey:clock.serviceDayKey
+      });
+      updateOfficialBadge(__now);
+    })()
+  `, sandbox);
+  assert.equal(elements.get("methodBadge").textContent, "融合推估 · 非 GPS｜北捷進站事件正常");
+
+  vm.runInContext(`
+    for (const key of lineVisible.keys()) lineVisible.set(key, false);
+    lineVisible.set("bl", true);
+    updateOfficialBadge(__now);
+  `, sandbox);
+  assert.equal(elements.get("methodBadge").textContent, "班表推估 · 非 GPS｜北捷進站事件正常");
 
   vm.runInContext(`
     for (const key of lineVisible.keys()) lineVisible.set(key, false);

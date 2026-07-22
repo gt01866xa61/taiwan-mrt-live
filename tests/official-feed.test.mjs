@@ -14,17 +14,17 @@ function between(start, end) {
 
 const pureSource = between("/* official-feed:pure:start */", "/* official-feed:pure:end */");
 const mappingSource = between("/* official-feed:mapping:start */", "/* official-feed:mapping:end */");
+const shortTurnSource = html.match(
+  /const OFFICIAL_SHORT_TURN_TERMINALS = Object\.freeze\((\{[\s\S]*\})\);\s*const OFFICIAL_FRESH_MS/
+)?.[1];
+assert.ok(shortTurnSource, "short-turn terminal configuration not found");
 const context = vm.createContext({ Date, Map, Set, String, Number, Math, RegExp, Error });
 
 vm.runInContext(`
   const OFFICIAL_MAX_FUTURE_MS = 30000;
   const OFFICIAL_STALE_MS = 600000;
   const OFFICIAL_LINE_IDS = new Set(["br", "r", "g", "o", "bl"]);
-  const OFFICIAL_SHORT_TURN_TERMINALS = Object.freeze({
-    "r|大安": 23,
-    "g|台電大樓": 11,
-    "bl|亞東醫院": 4
-  });
+  const OFFICIAL_SHORT_TURN_TERMINALS = Object.freeze(${shortTurnSource});
   ${pureSource}
   var services = [];
   ${mappingSource}
@@ -45,6 +45,15 @@ test("14 位臺北時間戳正確轉成 UTC", () => {
   assert.equal(api.parseTaipeiTimestamp("20260719193534"), 1784460934000);
   assert.ok(Number.isNaN(api.parseTaipeiTimestamp("20260230010101")));
   assert.ok(Number.isNaN(api.parseTaipeiTimestamp("bad")));
+});
+
+test("營運日以台北時間 03:00 為換日界線", () => {
+  const before = api.serviceClockAt(Date.UTC(2026, 6, 19, 18, 59, 59));
+  const after = api.serviceClockAt(Date.UTC(2026, 6, 19, 19, 0, 0));
+  assert.equal(before.serviceDayKey, "2026-07-19");
+  assert.equal(after.serviceDayKey, "2026-07-20");
+  assert.equal(before.svcSec, 26 * 3600 + 59 * 60 + 59);
+  assert.equal(after.svcSec, 3 * 3600);
 });
 
 test("站名先完整比對，再移除尾端站字", () => {
@@ -107,10 +116,23 @@ function service(id, names) {
   };
 }
 
+function redMainService() {
+  const names = Array.from({ length:27 }, (_, index) => `紅線${index}`);
+  names[0] = "淡水";
+  names[1] = "紅樹林";
+  names[6] = "北投";
+  names[7] = "奇岩";
+  names[20] = "中正紀念堂";
+  names[23] = "大安";
+  names[24] = "信義安和";
+  names[26] = "象山";
+  return service("r", names);
+}
+
 test("只在路線唯一時解析；跨線歧義不猜", () => {
   api.setServices([
     service("br", ["動物園", "大安", "忠孝復興", "南港展覽館"]),
-    service("r", ["淡水", "中正紀念堂", "大安", "象山"]),
+    redMainService(),
     service("bl", ["頂埔", "忠孝復興", "南港展覽館"]),
     service("a", ["台北車站", "機場第一航廈"])
   ]);
@@ -126,4 +148,21 @@ test("只在路線唯一時解析；跨線歧義不猜", () => {
   assert.deepEqual([...ambiguous.lineIds].sort(), ["bl", "br"]);
   const unsupported = api.resolveOfficialEvent({ station:"台北車站", destination:"機場第一航廈" });
   assert.equal(unsupported.candidate, null);
+});
+
+test("北投短折返只接受由南側北上進站，且結束點就是北投", () => {
+  const red = redMainService();
+  api.setServices([red]);
+
+  const northbound = api.resolveOfficialEvent({ station:"奇岩", destination:"北投" });
+  assert.equal(northbound.candidate?.sv.serviceId, "r:0");
+  assert.equal(northbound.candidate?.dir, 1);
+  assert.equal(northbound.candidate?.shortTerminalIdx, 6);
+  assert.equal(northbound.candidate?.shortDurationSec, red.depRev[red.n - 1 - 6] - 0.01);
+
+  const atTerminal = api.resolveOfficialEvent({ station:"北投", destination:"北投" });
+  assert.equal(atTerminal.candidate?.dir, 1);
+
+  const wrongDirection = api.resolveOfficialEvent({ station:"紅樹林", destination:"北投" });
+  assert.equal(wrongDirection.candidate, null);
 });
