@@ -1,45 +1,33 @@
-import { cities, cityById } from "./data/index.mjs";
+import { regions, regionById } from "./data/index.mjs";
 import { japanNow, formatJapanClock } from "./core/clock.mjs";
 import { activeTrains } from "./core/timetable.mjs";
 import { boundsFor } from "./core/geometry.mjs";
 
-const canvas = document.getElementById("japanMap");
+const $ = id => document.getElementById(id);
+const canvas = $("japanMap");
 const context = canvas.getContext("2d");
 const topbar = document.querySelector(".japan-topbar");
-const trainCount = document.getElementById("japanTrainCount");
-const offBanner = document.getElementById("japanOffBanner");
-const routeSheet = document.getElementById("japanRouteSheet");
-const routeButton = document.getElementById("japanRouteButton");
-const routeSummary = document.getElementById("japanRouteSummary");
-const routeSubtitle = document.getElementById("japanRouteSubtitle");
-const routeList = document.getElementById("japanRouteList");
-const presetList = document.getElementById("japanPresets");
-const poiTray = document.getElementById("japanPoiTray");
-const emptyState = document.getElementById("japanEmpty");
-const popup = document.getElementById("japanPopup");
-const popupChip = document.getElementById("japanPopupChip");
-const popupTitle = document.getElementById("japanPopupTitle");
-const popupMeta = document.getElementById("japanPopupMeta");
-const scrim = document.getElementById("japanScrim");
+const routeSheet = $("japanRouteSheet");
+const routeButton = $("japanRouteButton");
+const popup = $("japanPopup");
+const scrim = $("japanScrim");
 
 let width = 0;
 let height = 0;
 let pixelRatio = 1;
-let currentCity = cityById("tokyo");
+let currentRegion = regionById("kanto");
 let selected = null;
 let drawnTrains = [];
-let drawnPois = [];
 let drawnStations = [];
+let labelBoxes = [];
 let lastClockSecond = -1;
 let lastDrawSecond = -1;
-let labelBoxes = [];
-
-const view = { scale: 12, x: 0, y: 0 };
-const visibility = new Map(
-  cities.map(city => [city.id, new Set(city.lines.map(line => line.id))])
-);
-const activePreset = new Map(cities.map(city => [city.id, "all"]));
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const view = { scale: 12, x: 0, y: 0 };
+const visibility = new Map(regions.map(region => {
+  const preset = region.presets.find(item => item.id === region.defaultPreset);
+  return [region.id, new Set(preset.lineIds)];
+}));
 
 function cssTokens() {
   const style = getComputedStyle(document.documentElement);
@@ -58,30 +46,24 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   tokens = cssTokens();
 });
 
-function lineLuma(hex) {
-  const value = Number.parseInt(hex.slice(1), 16);
-  return (
-    0.299 * ((value >> 16) & 255) +
-    0.587 * ((value >> 8) & 255) +
-    0.114 * (value & 255)
-  ) / 255;
-}
-
 function visibleIds() {
-  return visibility.get(currentCity.id);
+  return visibility.get(currentRegion.id);
 }
 
 function visibleLines() {
   const ids = visibleIds();
-  return currentCity.lines.filter(line => ids.has(line.id));
+  return currentRegion.lines.filter(line => ids.has(line.id));
 }
 
-function stationNodes(city = currentCity) {
+function stationNodes(region = currentRegion) {
   const nodes = new Map();
-  for (const line of city.lines) {
+  for (const line of region.lines) {
     for (const station of line.stations) {
-      if (!nodes.has(station.name)) {
-        nodes.set(station.name, {
+      const key = `${line.network}|${station.name}`;
+      if (!nodes.has(key)) {
+        nodes.set(key, {
+          key,
+          network: line.network,
           name: station.name,
           x: station.x,
           y: station.y,
@@ -91,7 +73,7 @@ function stationNodes(city = currentCity) {
           lineIds: new Set()
         });
       }
-      const node = nodes.get(station.name);
+      const node = nodes.get(key);
       node.codes.add(station.code);
       node.japaneseNames.add(station.ja);
       node.lines.add(line.shortName);
@@ -112,23 +94,14 @@ function resize() {
 }
 
 function mapToScreen(point) {
-  return {
-    x: point.x * view.scale + view.x,
-    y: point.y * view.scale + view.y
-  };
+  return { x: point.x * view.scale + view.x, y: point.y * view.scale + view.y };
 }
 
-function fitCity() {
-  const lines = visibleLines();
-  const fitItems = lines.length
-    ? [...lines, { points: currentCity.pois }]
-    : [...currentCity.lines, { points: currentCity.pois }];
-  const bounds = boundsFor(fitItems, 1.4);
+function fitRegion() {
+  const lines = visibleLines().length ? visibleLines() : currentRegion.lines;
+  const bounds = boundsFor(lines, 1.4);
   const topbarBottom = topbar.getBoundingClientRect().bottom;
-  document.documentElement.style.setProperty(
-    "--jp-topbar-bottom",
-    `${Math.ceil(topbarBottom)}px`
-  );
+  document.documentElement.style.setProperty("--jp-topbar-bottom", `${Math.ceil(topbarBottom)}px`);
   const sidePadding = width <= 560 ? 28 : 54;
   const topPadding = Math.ceil(topbarBottom + 12);
   const bottomPadding = width <= 560 ? 92 : 98;
@@ -139,83 +112,56 @@ function fitCity() {
   );
   view.scale = Math.max(3, Math.min(80, scale));
   view.x = width / 2 - ((bounds.x0 + bounds.x1) / 2) * view.scale;
-  view.y =
-    topPadding +
-    usableHeight / 2 -
-    ((bounds.y0 + bounds.y1) / 2) * view.scale;
+  view.y = topPadding + usableHeight / 2 - ((bounds.y0 + bounds.y1) / 2) * view.scale;
 }
 
-function focusPoint(point, targetScale = Math.max(view.scale, 18)) {
-  view.scale = Math.min(80, targetScale);
-  view.x = width / 2 - point.x * view.scale;
-  view.y = height / 2 - point.y * view.scale;
+function lineLuma(hex) {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return (0.299 * ((value >> 16) & 255) + 0.587 * ((value >> 8) & 255) + 0.114 * (value & 255)) / 255;
 }
 
-function trainShape(ctx, length, trainWidth) {
+function trainBodyPath(ctx, length, trainWidth) {
   const rear = -length / 2;
   const nose = length / 2;
   const radius = trainWidth / 2;
   ctx.beginPath();
-  ctx.moveTo(rear + 1, -radius);
-  ctx.lineTo(nose - radius * 0.7, -radius);
+  ctx.moveTo(rear + 1.2, -radius);
+  ctx.lineTo(nose - radius * 0.72, -radius);
   ctx.quadraticCurveTo(nose, -radius * 0.78, nose, 0);
-  ctx.quadraticCurveTo(nose, radius * 0.78, nose - radius * 0.7, radius);
-  ctx.lineTo(rear + 1, radius);
-  ctx.quadraticCurveTo(rear, radius * 0.7, rear, radius * 0.32);
-  ctx.lineTo(rear, -radius * 0.32);
-  ctx.quadraticCurveTo(rear, -radius * 0.7, rear + 1, -radius);
+  ctx.quadraticCurveTo(nose, radius * 0.78, nose - radius * 0.72, radius);
+  ctx.lineTo(rear + 1.2, radius);
+  ctx.quadraticCurveTo(rear, radius * 0.7, rear, radius * 0.36);
+  ctx.lineTo(rear, -radius * 0.36);
+  ctx.quadraticCurveTo(rear, -radius * 0.7, rear + 1.2, -radius);
   ctx.closePath();
 }
 
-function boxesOverlap(first, second, gap = 3) {
-  return !(
-    first.x1 + gap < second.x0 ||
-    first.x0 - gap > second.x1 ||
-    first.y1 + gap < second.y0 ||
-    first.y0 - gap > second.y1
-  );
+function boxesOverlap(a, b, gap = 3) {
+  return !(a.x1 + gap < b.x0 || a.x0 - gap > b.x1 || a.y1 + gap < b.y0 || a.y0 - gap > b.y1);
 }
 
-function placeLabel(text, candidates, options = {}) {
-  const {
-    font = "700 10px -apple-system,'PingFang TC','Noto Sans TC',sans-serif",
-    color = tokens.ink,
-    force = false
-  } = options;
-  context.font = font;
+function placeLabel(text, candidates, important) {
+  const fontSize = important ? 10 : 9;
+  context.font = `${important ? 700 : 500} ${fontSize}px -apple-system,'PingFang TC','Noto Sans TC',sans-serif`;
   context.textBaseline = "middle";
-  const widthText = context.measureText(text).width;
-  const heightText = 12;
-
+  const textWidth = context.measureText(text).width;
   for (const candidate of candidates) {
-    const align = candidate.align || "left";
-    const x0 = align === "right" ? candidate.x - widthText : candidate.x;
-    const box = {
-      x0,
-      x1: x0 + widthText,
-      y0: candidate.y - heightText / 2,
-      y1: candidate.y + heightText / 2
-    };
-    const inView =
-      box.x1 >= 2 && box.x0 <= width - 2 &&
-      box.y1 >= 2 && box.y0 <= height - 2;
-    if (!inView || (!force && labelBoxes.some(existing => boxesOverlap(existing, box)))) {
-      continue;
-    }
-    context.textAlign = align;
+    const x0 = candidate.align === "right" ? candidate.x - textWidth : candidate.x;
+    const box = { x0, x1:x0 + textWidth, y0:candidate.y - 6, y1:candidate.y + 6 };
+    if (box.x1 < 2 || box.x0 > width - 2 || box.y1 < 2 || box.y0 > height - 2) continue;
+    if (labelBoxes.some(existing => boxesOverlap(existing, box))) continue;
+    context.textAlign = candidate.align;
     context.lineWidth = 3;
     context.strokeStyle = tokens.halo;
     context.strokeText(text, candidate.x, candidate.y);
-    context.fillStyle = color;
+    context.fillStyle = important ? tokens.ink : tokens.muted;
     context.fillText(text, candidate.x, candidate.y);
     labelBoxes.push(box);
-    return true;
+    return;
   }
-  return false;
 }
 
 function drawLine(line) {
-  const lineWidth = Math.max(3, Math.min(8, view.scale * 0.34));
   context.beginPath();
   line.stations.forEach((station, index) => {
     const point = mapToScreen(station);
@@ -223,180 +169,90 @@ function drawLine(line) {
     else context.lineTo(point.x, point.y);
   });
   context.strokeStyle = line.color;
-  context.lineWidth = lineWidth;
+  context.lineWidth = Math.max(3, Math.min(8, view.scale * 0.34));
   context.lineJoin = "round";
   context.lineCap = "round";
   context.stroke();
 }
 
-function drawPoiConnectors(nodes) {
-  context.save();
-  context.setLineDash([4, 5]);
-  context.lineWidth = 1.5;
-  context.strokeStyle = tokens.muted;
-  context.globalAlpha = 0.58;
-  for (const poi of currentCity.pois) {
-    const station = nodes.get(poi.station);
-    if (!station) continue;
-    const start = mapToScreen(station);
-    const end = mapToScreen(poi);
-    context.beginPath();
-    context.moveTo(start.x, start.y);
-    context.lineTo(end.x, end.y);
-    context.stroke();
-  }
-  context.restore();
-}
-
-function drawStations(nodes) {
+function drawStations() {
   drawnStations = [];
   const ids = visibleIds();
-  const poiStations = new Set(currentCity.pois.map(poi => poi.station));
-  const showAll = view.scale > 19;
+  const showAll = view.scale > 30;
   const showTransfers = view.scale > 16;
-  const showTerminals = view.scale > 14;
-  const showTouristStations = view.scale > 12;
-  const stationRadius = Math.max(2.3, Math.min(3.8, view.scale * 0.18));
-  const transferRadius = Math.max(3.5, Math.min(6, view.scale * 0.28));
+  const radiusNormal = Math.max(2.2, Math.min(3.6, view.scale * 0.17));
+  const radiusTransfer = Math.max(3.4, Math.min(6, view.scale * 0.28));
 
-  for (const station of nodes.values()) {
-    const visibleLineIds = [...station.lineIds].filter(id => ids.has(id));
-    if (!visibleLineIds.length) continue;
+  for (const station of stationNodes().values()) {
+    const activeLineIds = [...station.lineIds].filter(id => ids.has(id));
+    if (!activeLineIds.length) continue;
     const point = mapToScreen(station);
-    if (point.x < -36 || point.x > width + 36 || point.y < -36 || point.y > height + 36) {
-      continue;
-    }
-    const isTransfer = visibleLineIds.length > 1;
-    const isTerminal = currentCity.lines.some(line =>
+    if (point.x < -36 || point.x > width + 36 || point.y < -36 || point.y > height + 36) continue;
+    const isTransfer = activeLineIds.length > 1;
+    const isTerminal = currentRegion.lines.some(line =>
+      line.network === station.network &&
       ids.has(line.id) &&
       (line.stations[0].name === station.name || line.stations.at(-1).name === station.name)
     );
-    const isTourist = poiStations.has(station.name);
-    const radius = isTransfer ? transferRadius : stationRadius;
-
+    const radius = isTransfer ? radiusTransfer : radiusNormal;
     context.beginPath();
     context.arc(point.x, point.y, radius, 0, Math.PI * 2);
     context.fillStyle = tokens.panel;
     context.fill();
     context.lineWidth = isTransfer ? 2.4 : 1.8;
-    const firstLine = currentCity.lines.find(line => line.id === visibleLineIds[0]);
-    context.strokeStyle = isTransfer ? tokens.ink : firstLine.color;
+    context.strokeStyle = isTransfer
+      ? tokens.ink
+      : currentRegion.lines.find(line => line.id === activeLineIds[0]).color;
     context.stroke();
 
-    if (
-      showAll ||
-      (showTransfers && isTransfer) ||
-      (showTerminals && isTerminal) ||
-      (showTouristStations && isTourist)
-    ) {
-      const important = isTransfer || isTerminal || isTourist;
+    if (showAll || (showTransfers && (isTransfer || isTerminal)) || (!showTransfers && isTerminal)) {
       const offset = radius + 4;
-      placeLabel(
-        station.name,
-        [
-          { x:point.x + offset, y:point.y - offset, align:"left" },
-          { x:point.x - offset, y:point.y - offset, align:"right" },
-          { x:point.x + offset, y:point.y + offset, align:"left" },
-          { x:point.x - offset, y:point.y + offset, align:"right" }
-        ],
-        {
-          font: `${important ? 700 : 500} ${showAll ? 10 : 9}px -apple-system,'PingFang TC','Noto Sans TC',sans-serif`,
-          color: important ? tokens.ink : tokens.muted
-        }
-      );
-    }
-
-    drawnStations.push({ station, x: point.x, y: point.y });
-  }
-}
-
-function drawPois() {
-  drawnPois = [];
-  for (const poi of currentCity.pois) {
-    const point = mapToScreen(poi);
-    if (point.x < -50 || point.x > width + 50 || point.y < -50 || point.y > height + 50) {
-      continue;
-    }
-    const selectedPoi = selected?.type === "poi" && selected.item.id === poi.id;
-    const radius = selectedPoi ? 12 : 10;
-    context.save();
-    context.beginPath();
-    context.arc(point.x, point.y, radius, 0, Math.PI * 2);
-    context.fillStyle = poi.featured ? tokens.accent : tokens.panel;
-    context.fill();
-    context.lineWidth = 2;
-    context.strokeStyle = poi.featured ? tokens.panel : tokens.accent;
-    context.stroke();
-    context.fillStyle = poi.featured ? "#FFFFFF" : tokens.ink;
-    context.font = poi.icon === "🐇" ? "13px sans-serif" : "800 10px sans-serif";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(poi.icon, point.x, point.y + 0.5);
-    context.restore();
-
-    const offset = radius + 4;
-    placeLabel(
-      poi.name,
-      [
-        { x:point.x + offset, y:point.y, align:"left" },
-        { x:point.x - offset, y:point.y, align:"right" },
+      placeLabel(station.name, [
         { x:point.x + offset, y:point.y - offset, align:"left" },
-        { x:point.x - offset, y:point.y - offset, align:"right" }
-      ],
-      {
-        font: `850 ${poi.featured ? 11 : 10}px -apple-system,'PingFang TC','Noto Sans TC',sans-serif`,
-        color: tokens.ink,
-        force: poi.featured
-      }
-    );
-    drawnPois.push({ item: poi, x: point.x, y: point.y });
+        { x:point.x - offset, y:point.y - offset, align:"right" },
+        { x:point.x + offset, y:point.y + offset, align:"left" },
+        { x:point.x - offset, y:point.y + offset, align:"right" }
+      ], isTransfer || isTerminal);
+    }
+    drawnStations.push({ station, x:point.x, y:point.y });
   }
 }
 
 function drawTrain(train) {
   const point = mapToScreen(train.position);
   if (point.x < -28 || point.x > width + 28 || point.y < -28 || point.y > height + 28) {
-    return { ...train, x: -999, y: -999 };
+    return { ...train, x:-999, y:-999 };
   }
-  const isSelected =
-    selected?.type === "train" &&
+  const isSelected = selected?.type === "train" &&
     selected.line.id === train.line.id &&
     selected.direction === train.direction &&
     selected.departure === train.departure;
-  const baseScale = Math.max(0.72, Math.min(1.18, view.scale / 24));
-  const markerScale = isSelected ? baseScale * 1.28 : baseScale;
-  const angle = Math.atan2(train.position.hy, train.position.hx);
-
+  const baseScale = Math.max(0.72, Math.min(1.2, view.scale / 24));
+  const markerScale = isSelected ? baseScale * 1.3 : baseScale;
   context.save();
   context.translate(point.x, point.y);
-  context.rotate(angle);
+  context.rotate(Math.atan2(train.position.hy, train.position.hx));
   context.scale(markerScale, markerScale);
-  trainShape(context, 17, 9.5);
+  trainBodyPath(context, 17, 9.5);
   context.fillStyle = train.line.color;
   context.fill();
   context.lineWidth = 1.7;
-  context.strokeStyle = "rgba(255,255,255,.96)";
+  context.strokeStyle = "rgba(255,255,255,.95)";
   context.stroke();
   context.beginPath();
   context.arc(3.5, 0, 2.9, -Math.PI / 2, Math.PI / 2);
-  context.strokeStyle =
-    lineLuma(train.line.color) > 0.62
-      ? "rgba(24,30,36,.68)"
-      : "rgba(255,255,255,.96)";
-  context.lineWidth = 1.7;
+  context.lineWidth = 1.8;
+  context.lineCap = "round";
+  context.strokeStyle = lineLuma(train.line.color) > 0.62 ? "rgba(30,30,30,.65)" : "rgba(255,255,255,.95)";
+  context.stroke();
+  context.beginPath();
+  context.moveTo(-5.8, -2.2);
+  context.lineTo(-5.8, 2.2);
+  context.lineWidth = 1.25;
+  context.globalAlpha = 0.62;
   context.stroke();
   context.restore();
-
-  if (isSelected) {
-    context.beginPath();
-    context.arc(point.x, point.y, 18 * baseScale, 0, Math.PI * 2);
-    context.strokeStyle = train.line.color;
-    context.globalAlpha = 0.4;
-    context.lineWidth = 2;
-    context.stroke();
-    context.globalAlpha = 1;
-  }
-  return { ...train, x: point.x, y: point.y };
+  return { ...train, x:point.x, y:point.y };
 }
 
 function draw(clock) {
@@ -404,20 +260,14 @@ function draw(clock) {
   context.fillStyle = tokens.background;
   context.fillRect(0, 0, width, height);
   labelBoxes = [];
-
-  for (const line of visibleLines()) drawLine(line);
-  const nodes = stationNodes();
-  drawPoiConnectors(nodes);
-  drawPois();
-  drawStations(nodes);
-
-  const trains = activeTrains(currentCity.lines, clock, visibleIds());
+  visibleLines().forEach(drawLine);
+  drawStations();
+  const trains = activeTrains(currentRegion.lines, clock, visibleIds());
   drawnTrains = trains.map(drawTrain);
-  trainCount.textContent = String(trains.length);
-  offBanner.classList.toggle(
+  $("japanTrainCount").textContent = String(trains.length);
+  $("japanOffBanner").classList.toggle(
     "show",
-    visibleLines().length > 0 &&
-    trains.length === 0 &&
+    visibleLines().length > 0 && trains.length === 0 &&
     (clock.serviceMinute < 5 * 60 || clock.serviceMinute > 25 * 60)
   );
 }
@@ -429,9 +279,9 @@ function formatEta(seconds) {
 }
 
 function setChip(text, background, color = "#FFFFFF") {
-  popupChip.textContent = text;
-  popupChip.style.background = background;
-  popupChip.style.color = color;
+  $("japanPopupChip").textContent = text;
+  $("japanPopupChip").style.background = background;
+  $("japanPopupChip").style.color = color;
 }
 
 function updatePopup() {
@@ -439,7 +289,6 @@ function updatePopup() {
     popup.classList.remove("show");
     return;
   }
-
   if (selected.type === "train") {
     const live = drawnTrains.find(train =>
       train.line.id === selected.line.id &&
@@ -451,34 +300,21 @@ function updatePopup() {
       popup.classList.remove("show");
       return;
     }
-    const chipColor = lineLuma(live.line.color) > 0.62 ? "#17222D" : "#FFFFFF";
-    setChip(live.line.shortName, live.line.color, chipColor);
-    popupTitle.textContent = `往 ${live.position.destination.name}`;
-    popupMeta.innerHTML = live.position.atStation
-      ? `推估停靠 <b>${live.position.nextStation.name}</b> 中`
-      : `推估下一站 <b>${live.position.nextStation.name}</b>・${formatEta(live.position.secondsToNext)}
-        <br><span>${live.line.sourceMode}・非 GPS</span>`;
-  } else if (selected.type === "station") {
-    const station = selected.item;
-    setChip([...station.codes].join(" · "), tokens.muted);
-    popupTitle.textContent = station.name;
-    const japanese = [...station.japaneseNames]
-      .filter(name => name && name !== station.name)
-      .join("／");
-    popupMeta.innerHTML = `${japanese ? `${japanese}<br>` : ""}交會路線：${[...station.lines].join("・")}`;
+    setChip(live.line.shortName, live.line.color, lineLuma(live.line.color) > 0.62 ? "#17222D" : "#FFFFFF");
+    $("japanPopupTitle").textContent = `往 ${live.position.destination.name}`;
+    $("japanPopupMeta").innerHTML = live.position.atStation
+      ? `停靠 <b>${live.position.nextStation.name}</b> 中`
+      : `行駛中・下一站 <b>${live.position.nextStation.name}</b>・${formatEta(live.position.secondsToNext)}
+        <br><span>${live.line.sourceMode}，非 GPS</span>`;
   } else {
-    const poi = selected.item;
-    setChip("熱門景點", tokens.accent);
-    popupTitle.textContent = `${poi.icon} ${poi.name}`;
-    popupMeta.innerHTML = `<b>最近主軸：${poi.station}</b><br>${poi.note}`;
+    const station = selected.item;
+    setChip([...station.codes].join("・"), tokens.muted);
+    $("japanPopupTitle").textContent = station.name;
+    const japanese = [...station.japaneseNames].filter(name => name && name !== station.name).join("／");
+    $("japanPopupMeta").innerHTML =
+      `${japanese ? `${japanese}<br>` : ""}行經路線：${[...station.lines].join("、")}`;
   }
   popup.classList.add("show");
-}
-
-function selectPoi(poi, refocus = false) {
-  selected = { type: "poi", item: poi };
-  if (refocus) focusPoint(poi);
-  updatePopup();
 }
 
 function handleTap(x, y) {
@@ -488,21 +324,7 @@ function handleTap(x, y) {
     const candidate = Math.hypot(train.x - x, train.y - y);
     if (candidate < distance) {
       distance = candidate;
-      match = {
-        type: "train",
-        line: train.line,
-        direction: train.direction,
-        departure: train.departure
-      };
-    }
-  }
-  if (!match) {
-    for (const poi of drawnPois) {
-      const candidate = Math.hypot(poi.x - x, poi.y - y);
-      if (candidate < distance) {
-        distance = candidate;
-        match = { type: "poi", item: poi.item };
-      }
+      match = { type:"train", line:train.line, direction:train.direction, departure:train.departure };
     }
   }
   if (!match) {
@@ -510,7 +332,7 @@ function handleTap(x, y) {
       const candidate = Math.hypot(station.x - x, station.y - y);
       if (candidate < distance) {
         distance = candidate;
-        match = { type: "station", item: station.station };
+        match = { type:"station", item:station.station };
       }
     }
   }
@@ -518,41 +340,25 @@ function handleTap(x, y) {
   updatePopup();
 }
 
-function buildPoiTray() {
-  poiTray.replaceChildren();
-  for (const poi of currentCity.pois) {
-    const button = document.createElement("button");
-    button.className = `japan-poi${poi.featured ? " featured" : ""}`;
-    button.type = "button";
-    button.innerHTML = `<span aria-hidden="true">${poi.icon}</span><span>${poi.name}</span>`;
-    button.onclick = () => selectPoi(poi, true);
-    poiTray.append(button);
-  }
-}
-
 function detectPreset() {
-  const visible = visibleIds();
-  return currentCity.presets.find(preset =>
-    preset.lineIds.length === visible.size &&
-    preset.lineIds.every(id => visible.has(id))
+  const ids = visibleIds();
+  return currentRegion.presets.find(preset =>
+    preset.lineIds.length === ids.size && preset.lineIds.every(id => ids.has(id))
   )?.id || "custom";
 }
 
 function syncRouteUi() {
-  const visible = visibleLines();
+  const lines = visibleLines();
   const presetId = detectPreset();
-  activePreset.set(currentCity.id, presetId);
-  const preset = currentCity.presets.find(item => item.id === presetId);
-  routeSummary.textContent = visible.length === 0
-    ? "未顯示路線"
-    : preset
-      ? `${preset.label} · ${visible.length} 條`
-      : `已選 ${visible.length} / ${currentCity.lines.length} 條`;
-  emptyState.hidden = visible.length !== 0;
-  for (const button of routeList.querySelectorAll("[data-line-id]")) {
-    button.setAttribute("aria-pressed", visibleIds().has(button.dataset.lineId));
+  const preset = currentRegion.presets.find(item => item.id === presetId);
+  $("japanRouteSummary").textContent = lines.length === 0
+    ? "尚未顯示路線"
+    : preset ? `${preset.label}・${lines.length} 條` : `自訂 ${lines.length} / ${currentRegion.lines.length} 條`;
+  $("japanEmpty").hidden = lines.length !== 0;
+  for (const button of document.querySelectorAll("[data-line-id]")) {
+    button.setAttribute("aria-pressed", String(visibleIds().has(button.dataset.lineId)));
   }
-  for (const button of presetList.querySelectorAll("[data-preset-id]")) {
+  for (const button of document.querySelectorAll("[data-preset-id]")) {
     const on = button.dataset.presetId === presetId;
     button.classList.toggle("on", on);
     button.setAttribute("aria-pressed", String(on));
@@ -560,31 +366,25 @@ function syncRouteUi() {
 }
 
 function applyPreset(presetId) {
-  const preset =
-    currentCity.presets.find(item => item.id === presetId) ||
-    currentCity.presets[0];
-  visibility.set(currentCity.id, new Set(preset.lineIds));
-  activePreset.set(currentCity.id, preset.id);
+  const preset = currentRegion.presets.find(item => item.id === presetId) || currentRegion.presets[0];
+  visibility.set(currentRegion.id, new Set(preset.lineIds));
   selected = null;
   popup.classList.remove("show");
   syncRouteUi();
-  fitCity();
+  fitRegion();
 }
 
 function buildRouteSheet() {
-  routeSubtitle.textContent = currentCity.subtitle;
-  presetList.replaceChildren();
-  for (const preset of currentCity.presets) {
+  $("japanRouteSubtitle").textContent = `${currentRegion.subtitle}；可依城市／系統快速聚焦`;
+  $("japanPresets").replaceChildren(...currentRegion.presets.map(preset => {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.presetId = preset.id;
     button.textContent = preset.label;
     button.onclick = () => applyPreset(preset.id);
-    presetList.append(button);
-  }
-
-  routeList.replaceChildren();
-  for (const line of currentCity.lines) {
+    return button;
+  }));
+  $("japanRouteList").replaceChildren(...currentRegion.lines.map(line => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "japan-route-row";
@@ -592,10 +392,7 @@ function buildRouteSheet() {
     button.style.setProperty("--route-color", line.color);
     button.innerHTML = `
       <span class="japan-route-dot" aria-hidden="true"></span>
-      <span class="japan-route-copy">
-        <b>${line.shortName}</b>
-        <small>${line.sourceMode}</small>
-      </span>
+      <span class="japan-route-copy"><b>${line.shortName}</b><small>${line.operator}</small></span>
       <span class="japan-route-toggle" aria-hidden="true"></span>`;
     button.onclick = () => {
       const ids = visibleIds();
@@ -604,38 +401,25 @@ function buildRouteSheet() {
       selected = null;
       popup.classList.remove("show");
       syncRouteUi();
-      fitCity();
+      fitRegion();
     };
-    routeList.append(button);
-  }
+    return button;
+  }));
   syncRouteUi();
 }
 
-function setCity(id) {
-  currentCity = cityById(id);
+function setRegion(id) {
+  currentRegion = regionById(id);
   selected = null;
   popup.classList.remove("show");
-  for (const tab of document.querySelectorAll("[data-city]")) {
-    const on = tab.dataset.city === currentCity.id;
+  for (const tab of document.querySelectorAll("[data-region]")) {
+    const on = tab.dataset.region === currentRegion.id;
     tab.classList.toggle("on", on);
     tab.setAttribute("aria-selected", String(on));
     tab.tabIndex = on ? 0 : -1;
   }
-  buildPoiTray();
   buildRouteSheet();
-  fitCity();
-}
-
-function openSheet() {
-  routeButton.setAttribute("aria-expanded", "true");
-  if (typeof routeSheet.showModal === "function") routeSheet.showModal();
-  else routeSheet.setAttribute("open", "");
-}
-
-function closeSheet() {
-  routeButton.setAttribute("aria-expanded", "false");
-  if (routeSheet.open && typeof routeSheet.close === "function") routeSheet.close();
-  else routeSheet.removeAttribute("open");
+  fitRegion();
 }
 
 function zoomBy(multiplier) {
@@ -648,72 +432,55 @@ function zoomBy(multiplier) {
 
 const pointers = new Map();
 let pinch = null;
-
 canvas.addEventListener("pointerdown", event => {
   canvas.setPointerCapture(event.pointerId);
-  pointers.set(event.pointerId, {
-    x: event.clientX,
-    y: event.clientY,
-    startX: event.clientX,
-    startY: event.clientY
-  });
+  pointers.set(event.pointerId, { x:event.clientX, y:event.clientY, startX:event.clientX, startY:event.clientY });
   if (pointers.size === 2) {
-    const [first, second] = [...pointers.values()];
+    const [a, b] = [...pointers.values()];
     pinch = {
-      distance: Math.hypot(first.x - second.x, first.y - second.y),
-      scale: view.scale,
-      centerX: (first.x + second.x) / 2,
-      centerY: (first.y + second.y) / 2,
-      viewX: view.x,
-      viewY: view.y
+      distance:Math.hypot(a.x - b.x, a.y - b.y),
+      scale:view.scale,
+      centerX:(a.x + b.x) / 2,
+      centerY:(a.y + b.y) / 2,
+      viewX:view.x,
+      viewY:view.y
     };
   }
   canvas.classList.add("dragging");
 });
-
 canvas.addEventListener("pointermove", event => {
   const pointer = pointers.get(event.pointerId);
   if (!pointer) return;
-  const deltaX = event.clientX - pointer.x;
-  const deltaY = event.clientY - pointer.y;
+  const dx = event.clientX - pointer.x;
+  const dy = event.clientY - pointer.y;
   pointer.x = event.clientX;
   pointer.y = event.clientY;
-
   if (pointers.size === 1) {
-    view.x += deltaX;
-    view.y += deltaY;
+    view.x += dx;
+    view.y += dy;
   } else if (pointers.size === 2 && pinch) {
-    const [first, second] = [...pointers.values()];
-    const distance = Math.hypot(first.x - second.x, first.y - second.y);
+    const [a, b] = [...pointers.values()];
+    const distance = Math.hypot(a.x - b.x, a.y - b.y);
     const next = Math.max(3, Math.min(80, pinch.scale * distance / pinch.distance));
     const ratio = next / pinch.scale;
-    const centerX = (first.x + second.x) / 2;
-    const centerY = (first.y + second.y) / 2;
+    const centerX = (a.x + b.x) / 2;
+    const centerY = (a.y + b.y) / 2;
     view.scale = next;
     view.x = pinch.centerX - (pinch.centerX - pinch.viewX) * ratio + centerX - pinch.centerX;
     view.y = pinch.centerY - (pinch.centerY - pinch.viewY) * ratio + centerY - pinch.centerY;
   }
 });
-
 function endPointer(event) {
   const pointer = pointers.get(event.pointerId);
   pointers.delete(event.pointerId);
   if (pointers.size < 2) pinch = null;
   if (pointers.size === 0) canvas.classList.remove("dragging");
-  if (
-    pointer &&
-    Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) < 6
-  ) {
+  if (pointer && Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) < 6) {
     handleTap(event.clientX, event.clientY);
   }
 }
-
 canvas.addEventListener("pointerup", endPointer);
-canvas.addEventListener("pointercancel", event => {
-  pointers.delete(event.pointerId);
-  pinch = null;
-  if (pointers.size === 0) canvas.classList.remove("dragging");
-});
+canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("wheel", event => {
   event.preventDefault();
   const next = Math.max(3, Math.min(80, view.scale * Math.exp(-event.deltaY * 0.0015)));
@@ -721,20 +488,31 @@ canvas.addEventListener("wheel", event => {
   view.x = event.clientX - (event.clientX - view.x) * ratio;
   view.y = event.clientY - (event.clientY - view.y) * ratio;
   view.scale = next;
-}, { passive: false });
+}, { passive:false });
 
-document.getElementById("japanZoomIn").onclick = () => zoomBy(1.5);
-document.getElementById("japanZoomOut").onclick = () => zoomBy(1 / 1.5);
-document.getElementById("japanFit").onclick = fitCity;
-document.getElementById("japanInfo").onclick = () => scrim.classList.add("show");
-document.getElementById("japanInfoClose").onclick = () => scrim.classList.remove("show");
-document.getElementById("japanPopupClose").onclick = () => {
+function openSheet() {
+  routeButton.setAttribute("aria-expanded", "true");
+  if (typeof routeSheet.showModal === "function") routeSheet.showModal();
+  else routeSheet.setAttribute("open", "");
+}
+function closeSheet() {
+  routeButton.setAttribute("aria-expanded", "false");
+  if (routeSheet.open && typeof routeSheet.close === "function") routeSheet.close();
+  else routeSheet.removeAttribute("open");
+}
+
+$("japanZoomIn").onclick = () => zoomBy(1.5);
+$("japanZoomOut").onclick = () => zoomBy(1 / 1.5);
+$("japanFit").onclick = fitRegion;
+$("japanInfo").onclick = () => scrim.classList.add("show");
+$("japanInfoClose").onclick = () => scrim.classList.remove("show");
+$("japanPopupClose").onclick = () => {
   selected = null;
   popup.classList.remove("show");
 };
-document.getElementById("japanRestore").onclick = () => applyPreset("all");
-document.getElementById("japanShowAll").onclick = () => applyPreset("all");
-document.getElementById("japanRouteClose").onclick = closeSheet;
+$("japanRestore").onclick = () => applyPreset("all");
+$("japanShowAll").onclick = () => applyPreset("all");
+$("japanRouteClose").onclick = closeSheet;
 routeButton.onclick = openSheet;
 routeSheet.addEventListener("close", () => routeButton.setAttribute("aria-expanded", "false"));
 routeSheet.addEventListener("click", event => {
@@ -743,25 +521,22 @@ routeSheet.addEventListener("click", event => {
 scrim.addEventListener("click", event => {
   if (event.target === scrim) scrim.classList.remove("show");
 });
-for (const tab of document.querySelectorAll("[data-city]")) {
-  tab.onclick = () => setCity(tab.dataset.city);
+for (const tab of document.querySelectorAll("[data-region]")) {
+  tab.onclick = () => setRegion(tab.dataset.region);
 }
-
 window.addEventListener("resize", () => {
   const oldWidth = width;
   const oldHeight = height;
   resize();
-  const orientationChanged = (oldWidth > oldHeight) !== (width > height);
-  if (orientationChanged || Math.abs(width - oldWidth) > 80) fitCity();
+  if ((oldWidth > oldHeight) !== (width > height) || Math.abs(width - oldWidth) > 80) fitRegion();
 });
 
 function frame() {
   const clock = japanNow();
   if (clock.ss !== lastClockSecond) {
     lastClockSecond = clock.ss;
-    document.getElementById("japanClock").textContent = formatJapanClock(clock);
-    document.getElementById("japanClockSub").textContent =
-      `日本時間 ${clock.dateText}（${clock.dowText}）`;
+    $("japanClock").textContent = formatJapanClock(clock);
+    $("japanClockSub").textContent = `日本時間 ${clock.dateText}（${clock.dowText}）`;
   }
   if (!reducedMotion || clock.ss !== lastDrawSecond) {
     draw(clock);
@@ -772,13 +547,13 @@ function frame() {
 }
 
 resize();
-setCity("tokyo");
+setRegion("kanto");
 requestAnimationFrame(frame);
 
 window.__JAPAN_METRO_TEST__ = Object.freeze({
-  cities,
+  regions,
   stationNodes,
   visibility,
-  setCity,
-  fitCity
+  setRegion,
+  fitRegion
 });

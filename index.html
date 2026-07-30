@@ -256,6 +256,26 @@
     z-index: 10;
     pointer-events: none;
   }
+  .country-switch {
+    position: absolute;
+    z-index: 10;
+    left: 12px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 13px;
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    background: var(--panel);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow: var(--shadow);
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+  }
   .route-menu-btn {
     appearance: none;
     border: 1px solid var(--hairline);
@@ -283,6 +303,19 @@
     text-align: left;
     color: var(--muted);
     font-size: 11px;
+  }
+  @media (max-width: 350px) {
+    .country-switch {
+      width: 46px;
+      overflow: hidden;
+      color: transparent;
+      font-size: 0;
+    }
+    .country-switch::before {
+      content: "→";
+      color: var(--ink);
+      font-size: 14px;
+    }
   }
   .route-menu-btn .chevron {
     color: var(--accent);
@@ -639,6 +672,8 @@
   <button class="iconbtn" id="zfit" aria-label="回到全圖" style="font-size:15px">⌂</button>
   <button class="iconbtn" id="info" aria-label="說明" style="font-size:15px">ⓘ</button>
 </div>
+
+<a class="country-switch" href="./japan/" aria-label="前往日本地鐵動態圖">日本版 →</a>
 
 <div class="routebar">
   <button class="route-menu-btn" id="routeMenuBtn" aria-haspopup="dialog" aria-controls="routeSheet" aria-expanded="false">
