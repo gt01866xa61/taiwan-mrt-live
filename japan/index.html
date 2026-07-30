@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#09131D" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F3F5F7" media="(prefers-color-scheme: light)">
+  <meta name="description" content="東京、大阪、京都旅遊核心地鐵動態示意圖；位置依官方站序與概略班距模擬，非逐車 GPS。">
+  <title>日本地鐵旅遊動態圖</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <canvas id="japanMap" role="img" aria-label="日本旅遊核心地鐵示意路網，可拖曳、縮放並點選列車、車站或景點。"></canvas>
+
+  <header class="japan-topbar">
+    <div class="japan-toprow">
+      <a class="japan-back" href="../" aria-label="回到台灣捷運動態圖">← 台灣版</a>
+      <div class="japan-brand">
+        <span class="japan-country">JAPAN</span>
+        <div class="japan-brand-copy">
+          <h1>日本地鐵旅遊動態圖</h1>
+          <span class="japan-method">班距模擬 · 非 GPS</span>
+        </div>
+      </div>
+      <div class="japan-clockbox">
+        <div class="japan-time" id="japanClock">--:--:--</div>
+        <div class="japan-clocksub" id="japanClockSub">日本時間</div>
+      </div>
+    </div>
+
+    <div class="japan-navrow">
+      <div class="japan-tabs" id="japanCityTabs" role="tablist" aria-label="日本城市">
+        <button data-city="tokyo" class="on" role="tab" aria-selected="true">東京</button>
+        <button data-city="osaka" role="tab" aria-selected="false">大阪</button>
+        <button data-city="kyoto" role="tab" aria-selected="false">京都</button>
+      </div>
+      <div class="japan-stat">畫面顯示 <b id="japanTrainCount">0</b> 列 <small>位置推估</small></div>
+    </div>
+  </header>
+
+  <div class="japan-offbanner" id="japanOffBanner">目前非主要營運時段</div>
+
+  <div class="japan-side-controls">
+    <button id="japanZoomIn" aria-label="放大">＋</button>
+    <button id="japanZoomOut" aria-label="縮小">－</button>
+    <button id="japanFit" aria-label="回到全圖">⌂</button>
+    <button id="japanInfo" aria-label="資料說明">ⓘ</button>
+  </div>
+
+  <div class="japan-bottom">
+    <div class="japan-poi-tray" id="japanPoiTray" aria-label="熱門景點"></div>
+    <button class="japan-route-button" id="japanRouteButton" aria-haspopup="dialog" aria-controls="japanRouteSheet">
+      <span>路線</span>
+      <b id="japanRouteSummary">讀取中</b>
+      <span aria-hidden="true">⌃</span>
+    </button>
+  </div>
+
+  <div class="japan-empty" id="japanEmpty" hidden>
+    <b>目前沒有顯示路線</b>
+    <span>可重新顯示這座城市的全部路線</span>
+    <button id="japanRestore">全部顯示</button>
+  </div>
+
+  <dialog class="japan-sheet" id="japanRouteSheet" aria-labelledby="japanRouteTitle">
+    <div class="japan-sheet-handle" aria-hidden="true"></div>
+    <div class="japan-sheet-head">
+      <div>
+        <h2 id="japanRouteTitle">選擇顯示路線</h2>
+        <p id="japanRouteSubtitle">旅遊核心版</p>
+      </div>
+      <button id="japanRouteClose" aria-label="關閉路線選單">✕</button>
+    </div>
+    <div class="japan-presets" id="japanPresets"></div>
+    <div class="japan-route-list" id="japanRouteList"></div>
+    <button class="japan-show-all" id="japanShowAll">顯示這座城市的全部路線</button>
+  </dialog>
+
+  <aside class="japan-popup" id="japanPopup" aria-live="polite">
+    <button class="japan-popup-close" id="japanPopupClose" aria-label="關閉">✕</button>
+    <span class="japan-line-chip" id="japanPopupChip"></span>
+    <h2 id="japanPopupTitle"></h2>
+    <div class="japan-popup-meta" id="japanPopupMeta"></div>
+  </aside>
+
+  <div class="japan-scrim" id="japanScrim" role="dialog" aria-modal="true" aria-labelledby="japanInfoTitle">
+    <div class="japan-modal">
+      <span class="japan-country">TRAVEL CORE</span>
+      <h2 id="japanInfoTitle">日本版資料方式與範圍</h2>
+      <p><b>畫面車點是依官方站序與概略班距平滑模擬，尚未逐班對齊官方時刻表，也不是逐車 GPS。</b> 東京、大阪與京都皆使用日本時間；臨時延誤、跳站、直通運轉及加班車可能不會反映。</p>
+      <p>首版涵蓋東京 6 線、大阪 5 線及京都市營地下鐵完整 2 線，目標是快速看懂台灣旅客常用的觀光主軸，並非日本全國完整路網。</p>
+      <p>都營淺草線與大江戶線具有官方即時 VehiclePosition 資料介面，但此審核預覽尚未把它套入車點；因此全頁目前統一、誠實標示為「班距模擬」。大阪官方列車位置頁未提供可合法重用的公開 API，本站不會擷取非公開介面。</p>
+      <p>🐇「岡崎神社・兔子神社」是旅遊景點，不是地鐵站；圖上以景點 pin 與轉乘提示呈現。</p>
+      <p class="japan-sources">
+        官方資料：
+        <a href="https://www.tokyometro.jp/tcn/subwaymap/index.html" target="_blank" rel="noreferrer">東京 Metro</a>、
+        <a href="https://www.kotsu.metro.tokyo.jp/eng/subway_stations/" target="_blank" rel="noreferrer">都營地下鐵</a>、
+        <a href="https://subway-tr.osakametro.co.jp/en/guide/routemap.php" target="_blank" rel="noreferrer">Osaka Metro</a>、
+        <a href="https://www2.city.kyoto.lg.jp/kotsu/webguide/en/tika/tika_route_info.html" target="_blank" rel="noreferrer">京都市交通局</a>、
+        <a href="https://ja.kyoto.travel/tourism/single01.php?category_id=7&amp;tourism_id=246" target="_blank" rel="noreferrer">京都市官方觀光</a>
+      </p>
+      <button id="japanInfoClose">開始看車</button>
+    </div>
+  </div>
+
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
