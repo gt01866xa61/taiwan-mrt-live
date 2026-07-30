@@ -38,48 +38,44 @@ export const regions = [
     name: "關東",
     subtitle: "東京 13 線＋橫濱 2 線",
     lines: kantoLines,
-    presets: [
+    systems: [
       { id: "tokyo-metro", label: "東京 Metro", lineIds: lineIds(kantoTokyo.filter(line => line.operator === "Tokyo Metro")) },
       { id: "toei", label: "都營地下鐵", lineIds: lineIds(kantoTokyo.filter(line => line.operator === "東京都交通局")) },
-      { id: "yokohama", label: "橫濱市營", lineIds: lineIds(kantoYokohama) },
-      { id: "all", label: "關東全部", lineIds: lineIds(kantoLines) }
+      { id: "yokohama", label: "橫濱市營", lineIds: lineIds(kantoYokohama) }
     ],
-    defaultPreset: "tokyo-metro"
+    defaultSystem: "tokyo-metro"
   },
   {
     id: "tokai",
     name: "東海",
     subtitle: "名古屋市營地下鐵 6 線",
     lines: tokaiLines,
-    presets: [
-      { id: "nagoya", label: "名古屋市營", lineIds: lineIds(tokaiLines) },
-      { id: "all", label: "東海全部", lineIds: lineIds(tokaiLines) }
+    systems: [
+      { id: "nagoya", label: "名古屋市營", lineIds: lineIds(tokaiLines) }
     ],
-    defaultPreset: "nagoya"
+    defaultSystem: "nagoya"
   },
   {
     id: "kansai",
     name: "關西",
     subtitle: "大阪 9 線＋京都 2 線＋神戶 2 線",
     lines: kansaiLines,
-    presets: [
+    systems: [
       { id: "osaka", label: "大阪 Metro", lineIds: lineIds(kansaiOsaka) },
       { id: "kyoto", label: "京都市營", lineIds: lineIds(kansaiKyoto) },
-      { id: "kobe", label: "神戶市營", lineIds: lineIds(kansaiKobe) },
-      { id: "all", label: "關西全部", lineIds: lineIds(kansaiLines) }
+      { id: "kobe", label: "神戶市營", lineIds: lineIds(kansaiKobe) }
     ],
-    defaultPreset: "osaka"
+    defaultSystem: "osaka"
   },
   {
     id: "tohoku",
     name: "東北",
     subtitle: "仙台市地下鐵 2 線",
     lines: tohokuLines,
-    presets: [
-      { id: "sendai", label: "仙台市營", lineIds: lineIds(tohokuLines) },
-      { id: "all", label: "東北全部", lineIds: lineIds(tohokuLines) }
+    systems: [
+      { id: "sendai", label: "仙台市營", lineIds: lineIds(tohokuLines) }
     ],
-    defaultPreset: "sendai"
+    defaultSystem: "sendai"
   }
 ];
 

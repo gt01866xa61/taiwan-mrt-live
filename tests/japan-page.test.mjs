@@ -26,6 +26,9 @@ test("日本頁採台灣版編排語義，清楚揭露 36 線模擬限制", asyn
     assert.match(html, new RegExp(text));
   }
   assert.match(html, /尚未逐班對齊各公司完整時刻表/);
+  assert.match(html, /路網總覽/);
+  assert.match(html, /單線行車圖/);
+  assert.match(html, /不同公司、不同城市不會再疊在同一張圖/);
   assert.match(html, /景點本身不是地鐵站，所以不另外放進路線圖/);
   assert.doesNotMatch(html, /熱門景點|japan-poi|岡崎神社・兔子神社/);
   assert.doesNotMatch(html, />\s*LIVE\s*</i);
@@ -42,6 +45,11 @@ test("日本頁列出七地官方來源且不共用台灣版背景狀態", async
   const app = await readFile(new URL("../japan/app.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(app, /\blocalStorage\b|\bserviceWorker\b|officialFeed|stationHints|\bNET\b/);
   assert.doesNotMatch(app, /\bpoi\b|drawPois|PoiTray/);
+  assert.doesNotMatch(app, /關東全部|關西全部|applyPreset/);
+  assert.match(app, /lineId:system\.lineIds\[0\]/);
+  assert.match(app, /function showSystemOverview/);
+  assert.match(app, /function selectLine/);
+  assert.match(app, /overviewTrainPoints/);
   assert.match(app, /moveTo\(-5\.8, -2\.2\)/);
 });
 

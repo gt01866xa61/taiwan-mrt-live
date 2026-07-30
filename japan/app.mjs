@@ -20,13 +20,18 @@ let selected = null;
 let drawnTrains = [];
 let drawnStations = [];
 let labelBoxes = [];
+let overviewTrainPoints = [];
 let lastClockSecond = -1;
 let lastDrawSecond = -1;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const view = { scale: 12, x: 0, y: 0 };
-const visibility = new Map(regions.map(region => {
-  const preset = region.presets.find(item => item.id === region.defaultPreset);
-  return [region.id, new Set(preset.lineIds)];
+const selections = new Map(regions.map(region => {
+  const system = region.systems.find(item => item.id === region.defaultSystem)
+    || region.systems[0];
+  return [
+    region.id,
+    { systemId:system.id, lineId:system.lineIds[0] }
+  ];
 }));
 
 function cssTokens() {
@@ -46,8 +51,23 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   tokens = cssTokens();
 });
 
+function currentSelection() {
+  return selections.get(currentRegion.id);
+}
+
+function currentSystem() {
+  const selection = currentSelection();
+  return currentRegion.systems.find(system => system.id === selection.systemId)
+    || currentRegion.systems[0];
+}
+
+function isOverview() {
+  return !currentSelection().lineId;
+}
+
 function visibleIds() {
-  return visibility.get(currentRegion.id);
+  const selection = currentSelection();
+  return new Set(selection.lineId ? [selection.lineId] : currentSystem().lineIds);
 }
 
 function visibleLines() {
@@ -162,6 +182,8 @@ function placeLabel(text, candidates, important) {
 }
 
 function drawLine(line) {
+  const overview = isOverview();
+  context.save();
   context.beginPath();
   line.stations.forEach((station, index) => {
     const point = mapToScreen(station);
@@ -169,16 +191,22 @@ function drawLine(line) {
     else context.lineTo(point.x, point.y);
   });
   context.strokeStyle = line.color;
-  context.lineWidth = Math.max(3, Math.min(8, view.scale * 0.34));
+  context.lineWidth = overview
+    ? Math.max(2.6, Math.min(6.2, view.scale * 0.27))
+    : Math.max(3.8, Math.min(9, view.scale * 0.38));
+  context.globalAlpha = overview ? 0.88 : 1;
   context.lineJoin = "round";
   context.lineCap = "round";
   context.stroke();
+  context.restore();
 }
 
 function drawStations() {
   drawnStations = [];
   const ids = visibleIds();
-  const showAll = view.scale > 30;
+  const systemIds = new Set(currentSystem().lineIds);
+  const overview = isOverview();
+  const showAll = overview ? view.scale > 36 : view.scale > 11;
   const showTransfers = view.scale > 16;
   const radiusNormal = Math.max(2.2, Math.min(3.6, view.scale * 0.17));
   const radiusTransfer = Math.max(3.4, Math.min(6, view.scale * 0.28));
@@ -186,9 +214,10 @@ function drawStations() {
   for (const station of stationNodes().values()) {
     const activeLineIds = [...station.lineIds].filter(id => ids.has(id));
     if (!activeLineIds.length) continue;
+    const systemLineIds = [...station.lineIds].filter(id => systemIds.has(id));
     const point = mapToScreen(station);
     if (point.x < -36 || point.x > width + 36 || point.y < -36 || point.y > height + 36) continue;
-    const isTransfer = activeLineIds.length > 1;
+    const isTransfer = systemLineIds.length > 1;
     const isTerminal = currentRegion.lines.some(line =>
       line.network === station.network &&
       ids.has(line.id) &&
@@ -227,6 +256,29 @@ function drawTrain(train) {
     selected.line.id === train.line.id &&
     selected.direction === train.direction &&
     selected.departure === train.departure;
+  if (isOverview() && !isSelected) {
+    if (overviewTrainPoints.some(item => Math.hypot(item.x - point.x, item.y - point.y) < 8)) {
+      return { ...train, x:-999, y:-999 };
+    }
+    overviewTrainPoints.push(point);
+    context.save();
+    context.translate(point.x, point.y);
+    context.rotate(Math.atan2(train.position.hy, train.position.hx));
+    context.beginPath();
+    context.moveTo(-3.5, -2.1);
+    context.lineTo(1.2, -2.1);
+    context.quadraticCurveTo(4.2, -1.8, 4.2, 0);
+    context.quadraticCurveTo(4.2, 1.8, 1.2, 2.1);
+    context.lineTo(-3.5, 2.1);
+    context.closePath();
+    context.fillStyle = train.line.color;
+    context.fill();
+    context.lineWidth = 1;
+    context.strokeStyle = "rgba(255,255,255,.82)";
+    context.stroke();
+    context.restore();
+    return { ...train, x:point.x, y:point.y };
+  }
   const baseScale = Math.max(0.72, Math.min(1.2, view.scale / 24));
   const markerScale = isSelected ? baseScale * 1.3 : baseScale;
   context.save();
@@ -260,11 +312,14 @@ function draw(clock) {
   context.fillStyle = tokens.background;
   context.fillRect(0, 0, width, height);
   labelBoxes = [];
+  overviewTrainPoints = [];
   visibleLines().forEach(drawLine);
   drawStations();
   const trains = activeTrains(currentRegion.lines, clock, visibleIds());
   drawnTrains = trains.map(drawTrain);
-  $("japanTrainCount").textContent = String(trains.length);
+  $("japanTrainCount").textContent = String(
+    drawnTrains.filter(train => train.x !== -999).length
+  );
   $("japanOffBanner").classList.toggle(
     "show",
     visibleLines().length > 0 && trains.length === 0 &&
@@ -340,34 +395,52 @@ function handleTap(x, y) {
   updatePopup();
 }
 
-function detectPreset() {
-  const ids = visibleIds();
-  return currentRegion.presets.find(preset =>
-    preset.lineIds.length === ids.size && preset.lineIds.every(id => ids.has(id))
-  )?.id || "custom";
-}
-
 function syncRouteUi() {
-  const lines = visibleLines();
-  const presetId = detectPreset();
-  const preset = currentRegion.presets.find(item => item.id === presetId);
-  $("japanRouteSummary").textContent = lines.length === 0
-    ? "尚未顯示路線"
-    : preset ? `${preset.label}・${lines.length} 條` : `自訂 ${lines.length} / ${currentRegion.lines.length} 條`;
-  $("japanEmpty").hidden = lines.length !== 0;
+  const selection = currentSelection();
+  const system = currentSystem();
+  const line = selection.lineId
+    ? currentRegion.lines.find(item => item.id === selection.lineId)
+    : null;
+  $("japanRouteSummary").textContent = line
+    ? `${system.label}・${line.shortName}`
+    : `${system.label}・路網總覽`;
+  $("japanEmpty").hidden = true;
   for (const button of document.querySelectorAll("[data-line-id]")) {
-    button.setAttribute("aria-pressed", String(visibleIds().has(button.dataset.lineId)));
+    button.setAttribute("aria-pressed", String(selection.lineId === button.dataset.lineId));
   }
-  for (const button of document.querySelectorAll("[data-preset-id]")) {
-    const on = button.dataset.presetId === presetId;
+  for (const button of document.querySelectorAll("[data-system-id]")) {
+    const on = button.dataset.systemId === system.id;
     button.classList.toggle("on", on);
     button.setAttribute("aria-pressed", String(on));
   }
+  const overviewButton = document.querySelector("[data-view='overview']");
+  if (overviewButton) overviewButton.setAttribute("aria-pressed", String(!selection.lineId));
 }
 
-function applyPreset(presetId) {
-  const preset = currentRegion.presets.find(item => item.id === presetId) || currentRegion.presets[0];
-  visibility.set(currentRegion.id, new Set(preset.lineIds));
+function showSystemOverview() {
+  currentSelection().lineId = null;
+  selected = null;
+  popup.classList.remove("show");
+  syncRouteUi();
+  fitRegion();
+}
+
+function selectSystem(systemId) {
+  const system = currentRegion.systems.find(item => item.id === systemId)
+    || currentRegion.systems[0];
+  const selection = currentSelection();
+  selection.systemId = system.id;
+  selection.lineId = system.lineIds[0];
+  selected = null;
+  popup.classList.remove("show");
+  buildRouteSheet();
+  fitRegion();
+}
+
+function selectLine(lineId) {
+  const system = currentSystem();
+  if (!system.lineIds.includes(lineId)) return;
+  currentSelection().lineId = lineId;
   selected = null;
   popup.classList.remove("show");
   syncRouteUi();
@@ -375,16 +448,37 @@ function applyPreset(presetId) {
 }
 
 function buildRouteSheet() {
-  $("japanRouteSubtitle").textContent = `${currentRegion.subtitle}；可依城市／系統快速聚焦`;
-  $("japanPresets").replaceChildren(...currentRegion.presets.map(preset => {
+  const system = currentSystem();
+  $("japanRouteSubtitle").textContent = `${currentRegion.subtitle}；各營運系統分開顯示`;
+  $("japanPresets").replaceChildren(...currentRegion.systems.map(item => {
     const button = document.createElement("button");
     button.type = "button";
-    button.dataset.presetId = preset.id;
-    button.textContent = preset.label;
-    button.onclick = () => applyPreset(preset.id);
+    button.dataset.systemId = item.id;
+    button.textContent = item.label;
+    button.onclick = () => selectSystem(item.id);
     return button;
   }));
-  $("japanRouteList").replaceChildren(...currentRegion.lines.map(line => {
+
+  const overview = document.createElement("button");
+  overview.type = "button";
+  overview.className = "japan-route-row japan-overview-row";
+  overview.dataset.view = "overview";
+  overview.innerHTML = `
+    <span class="japan-overview-icon" aria-hidden="true">⌘</span>
+    <span class="japan-route-copy">
+      <b>${system.label}路網總覽</b>
+      <small>${system.lineIds.length} 條路線・精簡列車與站名</small>
+    </span>
+    <span class="japan-route-radio" aria-hidden="true"></span>`;
+  overview.onclick = () => {
+    showSystemOverview();
+    closeSheet();
+  };
+
+  const systemLines = system.lineIds
+    .map(id => currentRegion.lines.find(line => line.id === id))
+    .filter(Boolean);
+  const lineButtons = systemLines.map(line => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "japan-route-row";
@@ -392,19 +486,19 @@ function buildRouteSheet() {
     button.style.setProperty("--route-color", line.color);
     button.innerHTML = `
       <span class="japan-route-dot" aria-hidden="true"></span>
-      <span class="japan-route-copy"><b>${line.shortName}</b><small>${line.operator}</small></span>
-      <span class="japan-route-toggle" aria-hidden="true"></span>`;
+      <span class="japan-route-copy">
+        <b>${line.shortName}</b>
+        <small>${line.stations[0].name}—${line.stations.at(-1).name}・單線行車圖</small>
+      </span>
+      <span class="japan-route-radio" aria-hidden="true"></span>`;
     button.onclick = () => {
-      const ids = visibleIds();
-      if (ids.has(line.id)) ids.delete(line.id);
-      else ids.add(line.id);
-      selected = null;
-      popup.classList.remove("show");
-      syncRouteUi();
-      fitRegion();
+      selectLine(line.id);
+      closeSheet();
     };
     return button;
-  }));
+  });
+
+  $("japanRouteList").replaceChildren(overview, ...lineButtons);
   syncRouteUi();
 }
 
@@ -510,8 +604,11 @@ $("japanPopupClose").onclick = () => {
   selected = null;
   popup.classList.remove("show");
 };
-$("japanRestore").onclick = () => applyPreset("all");
-$("japanShowAll").onclick = () => applyPreset("all");
+$("japanRestore").onclick = showSystemOverview;
+$("japanShowAll").onclick = () => {
+  showSystemOverview();
+  closeSheet();
+};
 $("japanRouteClose").onclick = closeSheet;
 routeButton.onclick = openSheet;
 routeSheet.addEventListener("close", () => routeButton.setAttribute("aria-expanded", "false"));
@@ -553,7 +650,9 @@ requestAnimationFrame(frame);
 window.__JAPAN_METRO_TEST__ = Object.freeze({
   regions,
   stationNodes,
-  visibility,
+  selections,
+  currentSystem,
+  isOverview,
   setRegion,
   fitRegion
 });

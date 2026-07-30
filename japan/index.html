@@ -57,8 +57,8 @@
 
   <div class="japan-empty" id="japanEmpty" hidden>
     <b>目前沒有顯示路線</b>
-    <span>可打開下方路線面板重新選擇。</span>
-    <button id="japanRestore">顯示本區全部</button>
+    <span>可回到目前營運系統的路網總覽。</span>
+    <button id="japanRestore">回到路網總覽</button>
   </div>
 
   <dialog class="japan-sheet" id="japanRouteSheet" aria-labelledby="japanRouteTitle">
@@ -72,7 +72,7 @@
     </div>
     <div class="japan-presets" id="japanPresets"></div>
     <div class="japan-route-list" id="japanRouteList"></div>
-    <button class="japan-show-all" id="japanShowAll">顯示本區全部路線</button>
+    <button class="japan-show-all" id="japanShowAll">回到目前系統的路網總覽</button>
   </dialog>
 
   <aside class="japan-popup" id="japanPopup" aria-live="polite">
@@ -86,7 +86,8 @@
     <div class="japan-modal">
       <span class="japan-country">JAPAN · 36 LINES</span>
       <h2 id="japanInfoTitle">這張圖如何運作</h2>
-      <p><b>畫面採日本車廂路線圖常見的示意邏輯：</b>保留站序、轉乘與路線色，用水平、垂直和 45 度折線簡化呈現；不是按照真實地理比例，也不是複製任何一家業者的官方圖面。</p>
+      <p><b>畫面分成「路網總覽」與「單線行車圖」：</b>總覽只顯示同一家營運系統，並縮小列車、精簡站名；單線模式才顯示完整方向車標與較多站名。不同公司、不同城市不會再疊在同一張圖。</p>
+      <p>路線保留官方站序、轉乘關係與代表色，以水平、垂直和 45 度折線簡化呈現；不是按照真實地理比例，也不冒充任何一家業者的官方車廂圖。</p>
       <p>目前涵蓋東京 Metro 9 線、都營 4 線、橫濱 2 線、名古屋 6 線、Osaka Metro 8 線與 New Tram、京都 2 線、神戶 2 系統、仙台 2 線，共 36 條。JR、私鐵、單軌、路面電車及其他非市營地下鐵不在這一版範圍。</p>
       <p><b>列車不是即時 GPS。</b>位置依官方站序、概略首末班與尖離峰班距平順推估，尚未逐班對齊各公司完整時刻表，因此適合看路網與方向，不適合拿來判斷實際到站時間。</p>
       <p>京都東西線已完整收錄 T09 蹴上與 T10 東山，因此可涵蓋前往岡崎神社一帶的地鐵路段；景點本身不是地鐵站，所以不另外放進路線圖。</p>

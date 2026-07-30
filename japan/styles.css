@@ -449,6 +449,24 @@ body {
   text-align: left;
 }
 
+.japan-overview-row {
+  grid-column: 1 / -1;
+  grid-template-columns: 24px 1fr auto;
+  background: var(--jp-accent-soft);
+}
+
+.japan-overview-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--jp-accent);
+  color: var(--jp-on-accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .japan-route-dot {
   width: 10px;
   height: 10px;
@@ -463,6 +481,20 @@ body {
   margin-top: 2px;
   color: var(--jp-muted);
   font-size: 9px;
+}
+
+.japan-route-radio {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--jp-line);
+  border-radius: 50%;
+  background: var(--jp-panel-solid);
+  box-shadow: inset 0 0 0 4px var(--jp-panel-solid);
+}
+
+.japan-route-row[aria-pressed="true"] .japan-route-radio {
+  border-color: var(--route-color, var(--jp-accent));
+  background: var(--route-color, var(--jp-accent));
 }
 
 .japan-route-toggle {
