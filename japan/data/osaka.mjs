@@ -135,20 +135,103 @@ const N = line({
   }
 });
 
+const Y = line({
+  id: "jp-osaka-y",
+  code: "Y",
+  name: "Osaka Metro 四橋線",
+  shortName: "四橋線",
+  color: "#0078BA",
+  operator: "Osaka Metro",
+  sourceMode: "官方站序／概略班距模擬",
+  schedule: schedule({ peak: 4, offPeak: 7.5, holiday: 7.5, late: 10 }),
+  runSeconds: 90,
+  stations: [
+    station("Y11", "西梅田"), station("Y12", "肥後橋"),
+    station("Y13", "本町"), station("Y14", "四橋"),
+    station("Y15", "難波", "なんば"), station("Y16", "大國町", "大国町"),
+    station("Y17", "花園町"), station("Y18", "岸里"),
+    station("Y19", "玉出"), station("Y20", "北加賀屋"),
+    station("Y21", "住之江公園")
+  ],
+  anchors: {
+    Y11:[10,8], Y13:[12,11], Y14:[10,13], Y15:[12,15], Y16:[12,17],
+    Y18:[9,21], Y21:[6,28]
+  }
+});
+
+const S = line({
+  id: "jp-osaka-s",
+  code: "S",
+  name: "Osaka Metro 千日前線",
+  shortName: "千日前線",
+  color: "#E44D93",
+  operator: "Osaka Metro",
+  sourceMode: "官方站序／概略班距模擬",
+  schedule: schedule({ peak: 4, offPeak: 7.5, holiday: 7.5, late: 10 }),
+  runSeconds: 88,
+  stations: [
+    station("S11", "野田阪神"), station("S12", "玉川"),
+    station("S13", "阿波座"), station("S14", "西長堀"),
+    station("S15", "櫻川", "桜川"), station("S16", "難波", "なんば"),
+    station("S17", "日本橋"), station("S18", "谷町九丁目"),
+    station("S19", "鶴橋"), station("S20", "今里"),
+    station("S21", "新深江"), station("S22", "小路"),
+    station("S23", "北巽"), station("S24", "南巽")
+  ],
+  anchors: {
+    S11:[5,10], S13:[10,13], S14:[8,15], S16:[12,15], S17:[15,16],
+    S18:[18,17], S19:[20,17], S20:[22,17], S24:[28,17]
+  }
+});
+
+const I = line({
+  id: "jp-osaka-i",
+  code: "I",
+  name: "Osaka Metro 今里筋線",
+  shortName: "今里筋線",
+  color: "#EE7B1A",
+  operator: "Osaka Metro",
+  sourceMode: "官方站序／概略班距模擬",
+  schedule: schedule({ peak: 5, offPeak: 10, holiday: 10, late: 12 }),
+  runSeconds: 92,
+  stations: [
+    station("I11", "井高野"), station("I12", "瑞光四丁目"),
+    station("I13", "大桐豐里", "だいどう豊里"), station("I14", "太子橋今市"),
+    station("I15", "清水"), station("I16", "新森古市"),
+    station("I17", "關目成育", "関目成育"), station("I18", "蒲生四丁目"),
+    station("I19", "鴫野"), station("I20", "綠橋", "緑橋"),
+    station("I21", "今里")
+  ],
+  anchors: {
+    I11:[26,0], I14:[18,3], I17:[22,7], I18:[24,8], I20:[23,13], I21:[22,17]
+  }
+});
+
+const P = line({
+  id: "jp-osaka-p",
+  code: "P",
+  name: "Osaka Metro 南港港城線",
+  shortName: "New Tram",
+  color: "#00A7DB",
+  operator: "Osaka Metro",
+  sourceMode: "官方站序／概略班距模擬",
+  schedule: schedule({ peak: 4, offPeak: 7.5, holiday: 7.5, late: 10 }),
+  runSeconds: 90,
+  stations: [
+    station("P09", "宇宙廣場", "コスモスクエア"), station("P10", "貿易中心前", "トレードセンター前"),
+    station("P11", "中埠頭"), station("P12", "港城西", "ポートタウン西"),
+    station("P13", "港城東", "ポートタウン東"), station("P14", "渡輪碼頭", "フェリーターミナル"),
+    station("P15", "南港東"), station("P16", "南港口"),
+    station("P17", "平林"), station("P18", "住之江公園")
+  ],
+  anchors: {
+    P09:[2,13], P11:[1,16], P14:[2,21], P16:[4,24], P18:[6,28]
+  }
+});
+
 export const osaka = {
   id: "osaka",
   name: "大阪",
-  subtitle: "旅遊核心 5 線",
-  lines: [M, T, C, K, N],
-  presets: [
-    { id: "all", label: "全部 5 線", lineIds: [M, T, C, K, N].map(item => item.id) },
-    { id: "visitor", label: "觀光主軸", lineIds: [M, C, K, N].map(item => item.id) }
-  ],
-  pois: [
-    { id:"osaka-dotonbori", name:"道頓堀", icon:"✦", x:13.5, y:16.2, station:"難波", note:"M20／K17 步行" },
-    { id:"osaka-castle", name:"大阪城", icon:"◆", x:22, y:12, station:"森之宮", note:"C19／N20 步行" },
-    { id:"osaka-tsutenkaku", name:"通天閣", icon:"◆", x:13.5, y:18, station:"惠美須町", note:"K18 步行" },
-    { id:"osaka-yumeshima", name:"夢洲", icon:"●", x:-0.5, y:11.8, station:"夢洲", note:"C09" },
-    { id:"osaka-umeda", name:"梅田商圈", icon:"✦", x:11, y:6, station:"梅田", note:"M16／東梅田步行" }
-  ]
+  subtitle: "地下鐵 8 線＋New Tram",
+  lines: [M, T, Y, C, S, K, N, I, P]
 };

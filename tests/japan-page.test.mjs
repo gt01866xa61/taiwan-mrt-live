@@ -8,38 +8,49 @@ import { promisify } from "node:util";
 const pageUrl = new URL("../japan/index.html", import.meta.url);
 const execFileAsync = promisify(execFile);
 
-test("日本子站入口與資產完整，並能直接回到台灣版", async () => {
+test("日本子站入口與資產完整，四區切換且能回台灣版", async () => {
   const html = await readFile(pageUrl, "utf8");
   assert.match(html, /href="\.\.\/"[^>]*>← 台灣版<\/a>/);
   assert.match(html, /href="\.\/styles\.css"/);
   assert.match(html, /type="module" src="\.\/app\.mjs"/);
-  assert.match(html, /data-city="tokyo"/);
-  assert.match(html, /data-city="osaka"/);
-  assert.match(html, /data-city="kyoto"/);
+  for (const id of ["kanto", "tokai", "kansai", "tohoku"]) {
+    assert.match(html, new RegExp(`data-region="${id}"`));
+  }
   await access(new URL("../japan/styles.css", import.meta.url));
   await access(new URL("../japan/app.mjs", import.meta.url));
 });
 
-test("日本頁清楚揭露模擬語義，不把兔子神社當車站或宣稱 LIVE", async () => {
+test("日本頁採台灣版編排語義，清楚揭露 36 線模擬限制", async () => {
   const html = await readFile(pageUrl, "utf8");
-  assert.match(html, /班距模擬 · 非 GPS/);
-  assert.match(html, /尚未逐班對齊官方時刻表/);
-  assert.match(html, /岡崎神社・兔子神社/);
-  assert.match(html, /是旅遊景點，不是地鐵站/);
-  assert.match(html, /tokyometro\.jp\/tcn\/subwaymap/);
-  assert.match(html, /subway-tr\.osakametro\.co\.jp/);
-  assert.match(html, /city\.kyoto\.lg\.jp\/kotsu/);
+  for (const text of ["班距模擬 · 非 GPS", "畫面顯示", "位置推估", "選擇顯示路線", "共 36 條"]) {
+    assert.match(html, new RegExp(text));
+  }
+  assert.match(html, /尚未逐班對齊各公司完整時刻表/);
+  assert.match(html, /景點本身不是地鐵站，所以不另外放進路線圖/);
+  assert.doesNotMatch(html, /熱門景點|japan-poi|岡崎神社・兔子神社/);
   assert.doesNotMatch(html, />\s*LIVE\s*</i);
 });
 
-test("日本子站不共用台灣版狀態或背景服務", async () => {
+test("日本頁列出七地官方來源且不共用台灣版背景狀態", async () => {
+  const html = await readFile(pageUrl, "utf8");
+  for (const domain of [
+    "tokyometro.jp", "kotsu.metro.tokyo.jp", "city.yokohama.lg.jp",
+    "kotsu.city.nagoya.jp", "osakametro.co.jp", "city.kyoto.lg.jp",
+    "kotsu.city.kobe.lg.jp", "kotsu.city.sendai.jp"
+  ]) assert.match(html, new RegExp(domain.replaceAll(".", "\\.")));
+
   const app = await readFile(new URL("../japan/app.mjs", import.meta.url), "utf8");
-  assert.doesNotMatch(app, /\blocalStorage\b/);
-  assert.doesNotMatch(app, /\bserviceWorker\b/);
-  assert.doesNotMatch(app, /officialFeed|stationHints|REGIONS|\bNET\b/);
+  assert.doesNotMatch(app, /\blocalStorage\b|\bserviceWorker\b|officialFeed|stationHints|\bNET\b/);
+  assert.doesNotMatch(app, /\bpoi\b|drawPois|PoiTray/);
+  assert.match(app, /moveTo\(-5\.8, -2\.2\)/);
 });
 
-test("日本頁主程式通過 JavaScript 語法檢查", async () => {
-  const appPath = fileURLToPath(new URL("../japan/app.mjs", import.meta.url));
-  await execFileAsync(process.execPath, ["--check", appPath]);
+test("日本頁主程式與資料模組通過 JavaScript 語法檢查", async () => {
+  const paths = [
+    new URL("../japan/app.mjs", import.meta.url),
+    new URL("../japan/data/index.mjs", import.meta.url)
+  ];
+  for (const url of paths) {
+    await execFileAsync(process.execPath, ["--check", fileURLToPath(url)]);
+  }
 });

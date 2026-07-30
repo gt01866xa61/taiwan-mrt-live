@@ -76,7 +76,6 @@ body {
   gap: 9px;
 }
 
-.japan-back,
 .japan-brand,
 .japan-clockbox,
 .japan-tabs,
@@ -87,19 +86,6 @@ body {
   backdrop-filter: blur(14px);
   box-shadow: var(--jp-shadow);
   pointer-events: auto;
-}
-
-.japan-back {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 12px;
-  border-radius: 14px;
-  color: var(--jp-ink);
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 800;
-  white-space: nowrap;
 }
 
 .japan-brand {
@@ -183,7 +169,6 @@ body {
 .japan-tabs button,
 .japan-side-controls button,
 .japan-route-button,
-.japan-poi,
 .japan-sheet button,
 .japan-empty button,
 .japan-modal button,
@@ -280,53 +265,17 @@ body {
 .japan-bottom {
   position: absolute;
   z-index: 18;
-  right: 12px;
+  right: auto;
   bottom: calc(10px + env(safe-area-inset-bottom));
-  left: 12px;
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  left: 50%;
+  transform: translateX(-50%);
   pointer-events: none;
-}
-
-.japan-poi-tray {
-  flex: 1;
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
-  padding: 3px;
-  scrollbar-width: none;
-  pointer-events: auto;
-}
-
-.japan-poi-tray::-webkit-scrollbar { display: none; }
-
-.japan-poi {
-  flex: 0 0 auto;
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 11px;
-  border: 1px solid var(--jp-line);
-  border-radius: 13px;
-  background: var(--jp-panel);
-  box-shadow: var(--jp-shadow);
-  color: var(--jp-ink);
-  font-size: 11px;
-  font-weight: 750;
-  white-space: nowrap;
-}
-
-.japan-poi.featured {
-  border-color: color-mix(in srgb, var(--jp-accent) 40%, transparent);
-  background: var(--jp-accent-soft);
 }
 
 .japan-route-button {
   flex: 0 0 auto;
   min-width: 150px;
+  max-width: min(56vw, 310px);
   min-height: 46px;
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -340,6 +289,27 @@ body {
   color: var(--jp-muted);
   pointer-events: auto;
   text-align: left;
+}
+
+.japan-country-switch {
+  position: absolute;
+  z-index: 18;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  left: 12px;
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 13px;
+  border: 1px solid var(--jp-line);
+  border-radius: 14px;
+  background: var(--jp-panel);
+  box-shadow: var(--jp-shadow);
+  color: var(--jp-ink);
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
 }
 
 .japan-route-button b {
@@ -437,7 +407,9 @@ body {
   overflow-x: auto;
   margin-bottom: 12px;
   padding-bottom: 2px;
+  scrollbar-width: none;
 }
+.japan-presets::-webkit-scrollbar { display: none; }
 
 .japan-presets button {
   flex: 0 0 auto;
@@ -600,7 +572,6 @@ a:focus-visible {
 @media (max-width: 620px) {
   .japan-topbar { padding-right: 9px; padding-left: 9px; }
   .japan-toprow { gap: 6px; }
-  .japan-back { padding-inline: 9px; font-size: 11px; }
   .japan-brand { padding-inline: 9px; }
   .japan-country { display: none; }
   .japan-clockbox { min-width: 96px; padding-inline: 8px; }
@@ -610,7 +581,7 @@ a:focus-visible {
   .japan-stat { padding-inline: 8px; }
   .japan-stat small { display: none; }
   .japan-side-controls { right: 10px; }
-  .japan-bottom { right: 9px; left: 9px; }
+  .japan-bottom { right: auto; left: 50%; }
   .japan-route-button { min-width: 132px; }
   .japan-route-list { grid-template-columns: 1fr; }
 }
@@ -626,20 +597,18 @@ a:focus-visible {
 }
 
 @media (max-width: 350px) {
-  .japan-back {
-    width: 42px;
-    justify-content: center;
+  .japan-clockbox { min-width: 82px; }
+  .japan-country-switch {
+    width: 46px;
     overflow: hidden;
     color: transparent;
     font-size: 0;
   }
-  .japan-back::before {
+  .japan-country-switch::before {
     content: "←";
     color: var(--jp-ink);
     font-size: 14px;
   }
-  .japan-brand { gap: 0; }
-  .japan-clockbox { min-width: 82px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

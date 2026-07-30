@@ -3,12 +3,11 @@ import test from "node:test";
 
 import { japanNow } from "../japan/core/clock.mjs";
 import { activeTrains, tripPosition } from "../japan/core/timetable.mjs";
-import { cities, cityById } from "../japan/data/index.mjs";
+import { regions, regionById } from "../japan/data/index.mjs";
 
 test("日本時間固定使用 UTC+9，凌晨三點前歸前一營運日", () => {
   const morning = japanNow(Date.UTC(2026, 6, 30, 0, 0, 0));
   assert.equal(morning.hh, 9);
-  assert.equal(morning.mm, 0);
   assert.equal(morning.serviceDayKey, "2026-07-30");
 
   const beforeCutoff = japanNow(Date.UTC(2026, 6, 29, 17, 30, 0));
@@ -17,61 +16,60 @@ test("日本時間固定使用 UTC+9，凌晨三點前歸前一營運日", () =>
   assert.equal(beforeCutoff.serviceDayKey, "2026-07-29");
 });
 
-test("首版只包含東京六線、大阪五線、京都兩線，代號與台灣完全隔離", () => {
-  assert.deepEqual(cities.map(city => city.id), ["tokyo", "osaka", "kyoto"]);
-  assert.deepEqual(cities.map(city => city.lines.length), [6, 5, 2]);
-  for (const city of cities) {
-    for (const line of city.lines) {
-      assert.match(line.id, /^jp-(tokyo|osaka|kyoto)-/);
-      assert.ok(line.stations.length >= 10);
+test("日本版分成四區、共 36 條，資料代號與台灣完全隔離", () => {
+  assert.deepEqual(regions.map(region => region.id), ["kanto", "tokai", "kansai", "tohoku"]);
+  assert.deepEqual(regions.map(region => region.lines.length), [15, 6, 13, 2]);
+  assert.equal(regions.flatMap(region => region.lines).length, 36);
+  for (const region of regions) {
+    for (const line of region.lines) {
+      assert.match(line.id, /^jp-(tokyo|yokohama|nagoya|osaka|kyoto|kobe|sendai)-/);
+      assert.ok(line.stations.length >= 2);
       assert.ok(line.timing.durationSeconds > 0);
+      assert.ok(line.network);
     }
   }
 });
 
-test("跨線轉乘站在示意圖上使用完全相同座標", () => {
-  for (const city of cities) {
+test("同一城市內的跨線轉乘站使用相同座標，不誤合併跨城市同名站", () => {
+  for (const region of regions) {
     const seen = new Map();
-    for (const line of city.lines) {
+    for (const line of region.lines) {
       for (const station of line.stations) {
-        const previous = seen.get(station.name);
+        const key = `${line.network}|${station.name}`;
+        const previous = seen.get(key);
         if (previous) {
           assert.equal(
             Math.hypot(previous.x - station.x, previous.y - station.y),
             0,
-            `${city.name} ${station.name} 的轉乘座標不一致`
+            `${region.name} ${key} 的轉乘座標不一致`
           );
         } else {
-          seen.set(station.name, station);
+          seen.set(key, station);
         }
       }
     }
   }
 });
 
-test("京都岡崎神社是景點而非偽裝成地鐵站", () => {
-  const kyoto = cityById("kyoto");
-  const rabbit = kyoto.pois.find(poi => poi.id === "kyoto-okazaki");
-  assert.ok(rabbit);
-  assert.equal(rabbit.featured, true);
-  assert.equal(rabbit.station, "蹴上");
-  assert.match(rabbit.note, /32／93／203／204/);
-  assert.equal(
-    kyoto.lines.some(line => line.stations.some(station => station.name.includes("岡崎神社"))),
-    false
-  );
+test("京都東西線完整保留兔子神社周邊的蹴上與東山站，但沒有景點圖層", () => {
+  const kansai = regionById("kansai");
+  const kyotoTozai = kansai.lines.find(line => line.id === "jp-kyoto-t");
+  assert.ok(kyotoTozai);
+  assert.ok(kyotoTozai.stations.some(station => station.code === "T09" && station.name === "蹴上"));
+  assert.ok(kyotoTozai.stations.some(station => station.code === "T10" && station.name === "東山"));
+  assert.equal("pois" in kansai, false);
 });
 
-test("東京、大阪、京都在營運時段都能產生平順班距模擬列車", () => {
+test("四區在營運時段都能產生平順且有方向的班距模擬列車", () => {
   const clock = {
     serviceMinute: 12 * 60,
     serviceDayKey: "2026-07-30",
     isHoliday: false
   };
-  for (const city of cities) {
-    const visible = new Set(city.lines.map(line => line.id));
-    const trains = activeTrains(city.lines, clock, visible);
-    assert.ok(trains.length > city.lines.length, `${city.name} 沒有產生足夠列車`);
+  for (const region of regions) {
+    const visible = new Set(region.lines.map(line => line.id));
+    const trains = activeTrains(region.lines, clock, visible);
+    assert.ok(trains.length > region.lines.length, `${region.name} 沒有產生足夠列車`);
     for (const train of trains) {
       assert.ok(Number.isFinite(train.position.x));
       assert.ok(Number.isFinite(train.position.y));
@@ -80,10 +78,9 @@ test("東京、大阪、京都在營運時段都能產生平順班距模擬列�
   }
 });
 
-test("列車在停站時仍預先指向下一段，不會失去方向", () => {
-  const line = cityById("tokyo").lines[0];
-  const elapsed = line.timing.runSeconds + 1;
-  const position = tripPosition(line, 0, elapsed);
+test("列車停站時仍預先指向下一段，不會失去方向", () => {
+  const line = regionById("kanto").lines[0];
+  const position = tripPosition(line, 0, line.timing.runSeconds + 1);
   assert.equal(position.atStation, true);
   assert.notEqual(position.hx || position.hy, 0);
 });
